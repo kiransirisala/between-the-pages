@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#f4f0e8">
+  <meta name="description" content="Tell us what's happening in your life. Find one book for your moment.">
+  <title>Between the Pages — One book for your moment</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="style.css">
+  <script src="script.js" defer></script>
+</head>
+<body>
+  <div class="page-glow page-glow-one" aria-hidden="true"></div>
+  <div class="page-glow page-glow-two" aria-hidden="true"></div>
+
+  <div class="site-shell">
+    <header class="navbar">
+      <a class="brand" href="#" aria-label="Between the Pages home">
+        <span class="brand-mark" aria-hidden="true">B<span>·</span>P</span>
+        <span class="brand-name">between <i>the</i> pages</span>
+      </a>
+      <span class="nav-note">A little perspective, one book at a time.</span>
+    </header>
+
+    <main>
+      <section class="hero">
+        <div class="eyebrow"><span class="eyebrow-line"></span> A BOOK FOR WHERE YOU ARE <span class="eyebrow-line"></span></div>
+
+        <h1>Every chapter of life<br>deserves the <em>right perspective.</em></h1>
+
+        <p class="hero-copy">
+          Life doesn't come with a reading list.<br class="desktop-break">
+          Tell us what's happening. We'll find one book for your moment.
+        </p>
+
+        <section class="prompt-card" aria-labelledby="prompt-title">
+          <div class="card-topline">
+            <div>
+              <div class="step-label">YOUR STORY STARTS HERE</div>
+              <h2 id="prompt-title">What's on your mind?</h2>
+            </div>
+            <span class="sparkle" aria-hidden="true">✳</span>
+          </div>
+
+          <label class="sr-only" for="situation">Describe what's happening in your life</label>
+
+          <div class="textarea-wrap">
+            <textarea
+              id="situation"
+              maxlength="5000"
+              placeholder="I've been thinking about changing careers, but I'm worried about taking a risk. I want to move forward without putting my family's security at stake..."
+              required
+            ></textarea>
+
+            <button type="button" id="micBtn" class="mic-button" aria-label="Start voice input" title="Speak your thoughts">
+              <span id="micIcon" aria-hidden="true">🎙</span>
+            </button>
+          </div>
+
+          <div class="input-meta">
+            <p id="micStatus" class="mic-status" aria-live="polite">
+              Take your time. A few sentences are enough.
+            </p>
+            <span id="charCount" class="char-count">0 / 5000</span>
+          </div>
+
+          <div class="form-footer">
+            <span class="privacy-note">
+              <span class="lock-icon" aria-hidden="true">⌑</span>
+              Your story is used to find a thoughtful match.
+            </span>
+
+            <button type="button" id="recommendBtn" class="primary-button">
+              <span>Find my one book</span>
+              <span class="button-arrow" aria-hidden="true">↗</span>
+            </button>
+          </div>
+        </section>
+
+        <div class="trust-note">
+          <span>✦</span> Not the most popular book. The one that fits your moment.
+        </div>
+      </section>
+
+      <section id="result" class="result-section" aria-live="polite" aria-atomic="true"></section>
+    </main>
+
+    <footer class="footer">
+      <a class="footer-brand" href="#">between the pages<span>.</span></a>
+      <p>For every chapter of your life.</p>
+      <span class="footer-small">One situation. One meaningful recommendation.</span>
+    </footer>
+  </div>
+</body>
+</html>
