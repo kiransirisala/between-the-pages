@@ -1,50 +1,52 @@
-BETWEEN THE PAGES - Books OR Movies release candidate
+BETWEEN THE PAGES - Books OR Movies MVP
 
-FILES
-- index.html
-- style.css
-- script.js
-- worker.js
+PRODUCT
+- The visitor chooses Books or Movies and describes a need or remembered story in natural language.
+- The movie Worker internally classifies the request as remembered-title identification or mood/situation recommendation. The UI has no intent selector.
+- The API returns one strongest verified recommendation or an honest no-match response.
+- Language and country filters default to Any language and Anywhere.
 
-WHAT CHANGED
-- The format selector has exactly two options: Books and Movies.
-- There is no Both option or combined-results UI.
-- The frontend always sends the selected format.
-- The API rejects missing or invalid formats with HTTP 400; it does not silently default to Books.
-- Books requests run only the book recommendation path (Groq situation analysis + Groq book evaluation, then book catalogue/provider requests).
-- Movies requests run only the movie recommendation path (Groq situation analysis + Groq movie evaluation, then TMDB/Supabase movie requests).
-- The unselected catalogue is not called.
-- Existing language/origin filters, visual styling, and browser speech-input functionality are retained.
+PROJECT FILES
+- index.html, style.css, script.js: Cloudflare Pages frontend.
+- worker.js: Cloudflare Worker API and provider integrations.
+- tests/worker-regression.mjs: network-free mocked Worker regression checks.
 
-CLOUDFLARE WORKER VARIABLES / SECRETS EXPECTED
+REQUEST FLOW
+- The frontend POSTs situation, desiredOutcome, format, language, and country to /api/recommend.
+- The Worker validates the JSON object, exact format, and supported filter values before provider calls.
+- Books use Groq situation analysis, Google Books candidate search, Groq evaluation, and Google Books verification. Supabase is an optional cache; Open Library is discovery-only when no usable Google Books descriptions are available.
+- Movies use Groq analysis with intent and plot-clue fields. Identification searches clue phrases and TMDB keyword/title results, verifies candidate details, and evaluates synopsis evidence with an identification prompt. It does not use the generic drama fallback.
+- Mood/situation movie requests retain Supabase semantic retrieval and the TMDB popular-drama fallback. The shared weighted ranker and its existing rejection thresholds remain in place.
+- Movie language matching accepts either original or spoken-language metadata. Movie country matching uses production-country metadata. Movie cache writes and embeddings are best-effort after a recommendation has been selected.
+- Book language uses Google Books language restriction. Book country is included as a search hint only; Google Books country-of-origin data is inconsistent and is not verified as a hard filter.
+
+WORKER CONFIGURATION
+Required for recommendations:
 - GROQ_API_KEY (Secret)
-- GOOGLE_BOOKS_API_KEY (Secret)
-- TMDB_API_KEY (Secret; TMDB v3 API key, not the Read Access Token)
-- SUPABASE_URL (Variable; project root URL, e.g. https://PROJECT_REF.supabase.co; no /rest/v1 suffix)
-- SUPABASE_SECRET_KEY (Secret; keep server-side, never put in frontend or GitHub)
+- GOOGLE_BOOKS_API_KEY (Secret; Books)
+- TMDB_API_KEY (Secret; Movies; TMDB v3 API key)
 
-SUPABASE SCHEMA EXPECTED
-public.books:
-  google_books_id (unique), title, authors, description, categories, cover_url,
-  info_link, isbn10, isbn13, language, published_date, country_of_origin
-public.movies:
-  tmdb_id (unique), title, overview, genres, poster_path, release_date,
-  original_language, production_countries, spoken_languages
+Optional features:
+- SUPABASE_URL (Variable; project root URL, without /rest/v1)
+- SUPABASE_SECRET_KEY (Secret; server-side only)
+- GEMINI_API_KEY (Secret; needed with Supabase for movie embedding search and writes)
+- ADMIN_SYNC_KEY (Secret; protects the admin movie sync endpoint)
 
-LOCAL TEST CHECKLIST
-1. Keep the current production Worker and Pages deployment unchanged initially.
-2. Test the frontend with a local static server (for example VS Code Live Server at http://127.0.0.1:5500).
-3. Test/deploy worker.js to a separate test Worker or run it locally with the required secrets configured.
-4. Confirm the Worker health endpoint reports Supabase and TMDB configured.
-5. Submit a Books request. Confirm it returns only a book and that movie/TMDB discovery is not called.
-6. Submit a Movies request. Confirm it returns only a movie and that Google Books discovery is not called.
-7. Send requests with format=both, format missing, and an arbitrary format. Each must return HTTP 400 before any AI or catalogue calls.
-8. Test language and country preferences for both content types. Remember: book country-of-origin filtering is best-effort because Google Books metadata is inconsistent; movie language means original language, not dubbed/subtitle availability.
-9. Test the microphone in a supported browser and verify the transcript populates the situation field.
-10. Only after all tests pass, deploy the Worker and publish the frontend.
+No secret values belong in this repository, README, browser code, or logs. The health endpoint reports whether selected integrations appear configured; that does not confirm credentials work or schemas match.
 
-IMPORTANT NOTES
-- Each valid request is designed to make two Groq calls: one situation-analysis call and one candidate-evaluation call. Catalogue requests to Google Books/TMDB and Supabase are additional provider requests, not Groq calls.
-- This package has passed JavaScript syntax checks only. It has NOT been tested against live Cloudflare, Groq, Google Books, Supabase or TMDB credentials. Do not deploy to production until the checklist passes.
-- Login, per-user daily quotas, user history and admin analytics are not implemented in this package.
-- TMDB API usage is subject to TMDB's non-commercial terms and attribution requirements. The page includes the attribution notice. Do not add advertising, subscriptions or revenue without first confirming the appropriate permission.
+DATABASE NOTES
+- The Worker reads and writes public.books and public.movies using the field names in worker.js.
+- Movie semantic retrieval additionally expects a movie_embeddings table and a match_movies RPC compatible with gemini-embedding-001 embeddings configured to 1536 dimensions.
+- This repository does not contain SQL migrations or the RPC definition. Confirm the actual database schema and vector dimensions before enabling semantic retrieval or catalogue sync. Do not infer or modify production schema based on this README.
+- Book country-of-origin storage is not implemented as a verified filter.
+
+LOCAL CHECKS
+- Run the network-free regression suite with Node.js: node tests/worker-regression.mjs
+- The suite mocks Groq, Google Books, TMDB, and Supabase responses. It checks format/body validation, Cast Away plot identification without drama fallback, retained mood fallback, spoken-language/country filtering, non-fatal movie cache writes, and Google Books continuation after Supabase cache failure.
+- These mocked checks do not confirm live provider response formats, credentials, quotas, Cloudflare limits, Pages/Worker revision parity, production CORS settings, or Supabase schema compatibility.
+- Before release, run the same scenarios against a separate test Worker and non-production credentials, then compare the deployed Pages and Worker revisions. Do not deploy or modify production data without explicit approval.
+
+SECURITY AND LIMITS
+- The frontend's Worker URL and allowed CORS origins are configured in script.js and worker.js respectively; verify both for each intended environment.
+- No accounts, user history, per-user quota system, or admin analytics are implemented.
+- TMDB attribution is displayed in the page. Confirm applicable TMDB terms before monetizing the service.

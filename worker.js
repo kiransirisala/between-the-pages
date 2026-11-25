@@ -35,6 +35,24 @@ const ANALYSIS_SCHEMA = {
   additionalProperties: false
 };
 
+// Movie requests need to preserve concrete story clues as well as emotional
+// context so remembered-title searches do not collapse into mood searches.
+const MOVIE_ANALYSIS_SCHEMA = {
+  type: "object",
+  properties: {
+    intent: { type: "string", enum: ["identify", "recommend"] },
+    situation_summary: { type: "string" },
+    user_context: { type: "string" },
+    main_challenge: { type: "string" },
+    underlying_need: { type: "string" },
+    desired_outcome: { type: "string" },
+    plot_clues: { type: "array", items: { type: "string" } },
+    search_queries: { type: "array", items: { type: "string" } }
+  },
+  required: ["intent", "situation_summary", "user_context", "main_challenge", "underlying_need", "desired_outcome", "plot_clues", "search_queries"],
+  additionalProperties: false
+};
+
 const MOVIE_EVALUATION_SCHEMA = {
   type: "object",
   properties: {
@@ -124,6 +142,14 @@ function safeArray(value, max = 8) {
   return Array.isArray(value) ? value.slice(0, max) : [];
 }
 
+function isObjectRecord(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+
+const SUPPORTED_LANGUAGES = new Set(["any", "en", "te", "hi", "ta", "kn", "ml", "bn", "mr", "fr", "es", "de", "ja", "ko", "it", "pt", "zh"]);
+const SUPPORTED_COUNTRIES = new Set(["IN", "US", "GB", "FR", "DE", "JP", "KR", "ES", "IT", "CA", "AU"]);
+const COUNTRY_LABELS = { IN: "India", US: "United States", GB: "United Kingdom", FR: "France", DE: "Germany", JP: "Japan", KR: "South Korea", ES: "Spain", IT: "Italy", CA: "Canada", AU: "Australia" };
+
 function errorMessage(error) {
   return error instanceof Error ? error.message : String(error);
 }
@@ -175,7 +201,9 @@ async function callGroq(env, messages, schema, maxTokens = 1200) {
                 ? "situation_analysis"
                 : schema === MOVIE_EVALUATION_SCHEMA
                   ? "movie_evaluation"
-                  : "book_evaluation",
+                  : schema === MOVIE_ANALYSIS_SCHEMA
+                    ? "movie_analysis"
+                    : "book_evaluation",
               strict: true,
               schema
             }
@@ -197,11 +225,7 @@ async function callGroq(env, messages, schema, maxTokens = 1200) {
   if (!response.ok) {
     const detail = await response.text();
 
-    console.error(
-      "Groq API error:",
-      response.status,
-      detail.slice(0, 1000)
-    );
+    console.error("Groq API error status:", response.status);
 
     if (response.status === 401 || response.status === 403) {
       throw new Error(
@@ -236,10 +260,7 @@ async function callGroq(env, messages, schema, maxTokens = 1200) {
   try {
     return JSON.parse(content);
   } catch {
-    console.error(
-      "Groq returned invalid JSON:",
-      content.slice(0, 1000)
-    );
+    console.error("Groq returned invalid JSON content.");
 
     throw new Error(
       "AI service returned an invalid response."
@@ -271,7 +292,7 @@ async function supabaseRequest(env, table, method = "GET", query = "", body = nu
   });
   if (!response.ok) {
     const detail = await response.text();
-    console.error("Supabase request failed:", response.status, detail.slice(0, 500));
+    console.error("Supabase request failed with status:", response.status);
     throw new Error(`Supabase catalogue returned ${response.status}.`);
   }
   if (method === "GET") return response.json();
@@ -365,7 +386,7 @@ async function createGeminiEmbedding(text, env, taskType) {
 
   if (!response.ok) {
     const detail = await response.text();
-    console.error("Gemini embedding error:", response.status, detail.slice(0, 500));
+    console.error("Gemini embedding error status:", response.status);
 
     if (response.status === 401 || response.status === 403) {
       throw new Error("Gemini authentication failed. Check GEMINI_API_KEY.");
@@ -570,11 +591,7 @@ async function searchGoogleBooks(query, env, language = "any") {
   if (!response.ok) {
     const detail = await response.text();
 
-    console.error(
-      "Google Books search error:",
-      response.status,
-      detail.slice(0, 500)
-    );
+    console.error("Google Books search error status:", response.status);
 
     if (response.status === 401) {
       throw new Error("Google Books authentication failed. Check GOOGLE_BOOKS_API_KEY.");
@@ -948,6 +965,11 @@ async function collectCandidates(queries, env, language = "any") {
       for (const book of cachedBooks) {
         if (!uniqueBooks.has(book.id)) uniqueBooks.set(book.id, book);
       }
+    } catch (error) {
+      console.error("Supabase book cache lookup failed; continuing with Google Books:", errorMessage(error));
+    }
+
+    try {
       const books = uniqueBooks.size >= MAX_RANKED_CANDIDATES
         ? []
         : await searchGoogleBooks(query, env, language);
@@ -1267,7 +1289,7 @@ async function tmdbFetch(path, env, params = {}) {
 
   if (!response.ok) {
     const detail = await response.text();
-    console.error("TMDB API error:", response.status, detail.slice(0, 500));
+    console.error("TMDB API error status:", response.status);
 
     if (response.status === 401) {
       throw new Error("TMDB authentication failed. Check TMDB_API_KEY.");
@@ -1347,27 +1369,19 @@ async function enrichAndVerifyMovie(candidate, env, language = "en-US") {
 async function discoverMovieCandidates(
   queries,
   env,
-  language = "any",
-  country = ""
+  intent = "recommend",
+  plotClues = []
 ) {
   const found = new Map();
+  const discoveryQueries = intent === "identify"
+    ? [...plotClues, ...queries]
+    : queries;
 
   const addMovie = (item, source = "TMDB") => {
     if (!item?.id || !item.overview || item.overview.length < 50) {
       return;
     }
  
-const languageCode = language
-  ? language.split("-")[0].toLowerCase()
-  : "any";
-
-if (
-  languageCode !== "any" &&
-  item.original_language !== languageCode
-) {
-  return;
-}
-
     const id = String(item.id);
 
     if (!found.has(id)) {
@@ -1394,7 +1408,7 @@ if (
   // 1. Search the existing Supabase movie catalogue.
   if (supabaseConfigured(env)) {
     try {
-      const terms = queries
+      const terms = discoveryQueries
         .flatMap(q => cleanString(q, 120).split(/\s+/))
         .map(x => x.replace(/[,*()]/g, ""))
         .filter(x => x.length > 4)
@@ -1406,10 +1420,6 @@ if (
           or: `(${terms.map(term => `title.ilike.*${term}*`).join(",")})`,
           limit: "10"
         });
-
-        if (language && language !== "any") {
-          params.set("original_language", `eq.${language}`);
-        }
 
         const cached = await supabaseRequest(
           env,
@@ -1442,10 +1452,14 @@ if (
     }
   }
 
-  // 2. Search TMDB keywords and discover movies by keyword IDs.
+  // Search distinctive clue phrases independently. Broad natural-language
+  // paragraphs are poor keyword queries and can return unrelated keyword IDs.
   const keywordIds = new Set();
+  const clueQueries = intent === "identify"
+    ? [...new Set([...plotClues, ...queries].map(q => cleanString(q, 120)).filter(Boolean))].slice(0, 4)
+    : queries.slice(0, 3);
 
-  for (const query of queries.slice(0, 3)) {
+  for (const query of clueQueries) {
     try {
       const keywords = await searchMovieKeywords(query, env);
 
@@ -1466,18 +1480,16 @@ if (
   );
 
   if (keywordIds.size) {
+    const ids = Array.from(keywordIds).slice(0, 10);
     try {
       const params = {
         include_adult: "false",
         language: "en-US",
         sort_by: "popularity.desc",
         page: 1,
-        with_keywords: Array.from(keywordIds).slice(0, 10).join(",")
+        // TMDB uses pipe for OR, so remembered plots can match any clue.
+        with_keywords: ids.join(intent === "identify" ? "|" : ",")
       };
-
-      if (language && language !== "any") {
-        params.with_original_language = language;
-      }
 
       const discovered = await tmdbFetch(
         "/discover/movie",
@@ -1501,9 +1513,9 @@ if (
     }
   }
 
-  // 3. Fallback: discover popular dramas even when
-  // TMDB keyword search returns no results.
-  if (found.size < 5) {
+  // Mood discovery retains its broad discovery fallback. A remembered-plot
+  // request must never be filled with unrelated popular dramas.
+  if (intent !== "identify" && found.size < 5) {
     for (let page = 1; page <= 3; page++) {
       try {
         const discovered = await tmdbFetch(
@@ -1541,8 +1553,9 @@ if (
 
   // 4. Fallback: use shorter phrases in title search.
   // This avoids sending long situation descriptions as movie titles.
-  if (found.size < MAX_RANKED_CANDIDATES) {
-    for (const query of queries.slice(0, 3)) {
+  if (intent === "identify" || found.size < MAX_RANKED_CANDIDATES) {
+    const titleQueries = intent === "identify" ? [...queries, ...plotClues] : queries.slice(0, 3);
+    for (const query of titleQueries.slice(0, intent === "identify" ? 4 : 3)) {
       const shortQuery = cleanString(query, 120)
         .replace(/\b(movies?|films?|about|that|which|illustrate|stories|characters)\b/gi, "")
         .trim()
@@ -1755,7 +1768,13 @@ async function evaluateMovieCandidates(
   const selection = await callGroq(env, [
     {
       role: "system",
-      content: `You are an evidence-based movie matching engine.
+      content: analysis?.intent === "identify"
+        ? `You identify a remembered movie using evidence from its actual synopsis.
+
+Treat the user's remembered plot and listed clues as evidence to verify, not as themes for a recommendation. Compare characters and relationships, events, setting, objects, distinctive scenes, and story progression. Alternate wording is acceptable, but the synopsis must support several distinctive clues. Do not identify a title from one generic overlap, genre, popularity, or a guessed plot. If evidence is insufficient, return an empty evaluations array.
+
+Score from 0 to 5. situationScore measures direct plot correspondence; evidenceScore measures whether distinctive clues are supported by the synopsis. The other scores are secondary and must not reward mood fit alone. Give a concise reason tied to explicit synopsis evidence. Only use exact candidate IDs, return at most two, and return JSON matching the supplied schema.`
+        : `You are an evidence-based movie matching engine.
 
 Evaluate each movie's actual synopsis against the user's situation and desired emotional outcome.
 
@@ -1798,6 +1817,10 @@ evidenceScore, categoryScore and reason.`
     }
   ], MOVIE_EVALUATION_SCHEMA, 1500);
 
+  if (!selection || typeof selection !== "object" || !Array.isArray(selection.evaluations)) {
+    throw new Error("AI movie evaluation returned an invalid response structure.");
+  }
+
   const rankingCandidates = candidates.map(movie => ({
     ...movie,
     authors: [],
@@ -1828,8 +1851,15 @@ async function recommendMovies(body, env) {
 
   const country = cleanString(
     body.country || "",
-    60
+    2
   ).toUpperCase();
+
+  if (!SUPPORTED_LANGUAGES.has(language)) {
+    return { success: false, error: "Please choose a supported language or Any language." };
+  }
+  if (country && !SUPPORTED_COUNTRIES.has(country)) {
+    return { success: false, error: "Please choose a valid two-letter country code." };
+  }
 
   if (!situation || situation.length < 10) {
     return {
@@ -1842,18 +1872,15 @@ async function recommendMovies(body, env) {
   const analysis = await callGroq(env, [
     {
       role: "system",
-      content: `You are the situation-understanding engine for Between the Pages.
+      content: `You are the movie request analysis engine for Between the Pages.
 
-Understand the user's actual circumstances, challenge, underlying need and desired emotional outcome.
+First classify the request as identify when the user is trying to remember a movie from its plot, scene, character, object or other clues; otherwise classify it as recommend (mood, interests, life situation, or desired emotional outcome).
 
-Do not rely on simple keyword matching.
+For identify requests, extract up to eight short, concrete clues: characters and relationships, events, setting, objects, distinctive scenes and story progression. Preserve details from the user's wording; do not invent. Generate up to six concise searches that preserve distinctive combinations and useful alternate wording. Avoid replacing the plot with generic genre or mood themes.
 
-Identify the emotional and narrative themes that would make a movie genuinely relevant.
+For recommend requests, identify emotional/narrative needs and generate three focused thematic searches. Keep plot_clues empty unless the user is recalling an existing movie.
 
-Return three short search themes in search_queries.
-Do not invent facts about the user.
-
-Return the complete JSON structure required by the supplied schema.`
+Do not invent facts. Return all fields required by the supplied schema.`
     },
     {
       role: "user",
@@ -1864,11 +1891,26 @@ Return the complete JSON structure required by the supplied schema.`
         preferred_country: country || "any"
       })
     }
-  ], ANALYSIS_SCHEMA, 1000);
+  ], MOVIE_ANALYSIS_SCHEMA, 1200);
 
+  if (
+    !analysis ||
+    typeof analysis !== "object" ||
+    !["identify", "recommend"].includes(analysis.intent) ||
+    !Array.isArray(analysis.plot_clues) ||
+    !Array.isArray(analysis.search_queries)
+  ) {
+    throw new Error("AI movie analysis returned an invalid response structure.");
+  }
+
+  const intent = analysis.intent === "identify" ? "identify" : "recommend";
+  const plotClues = safeArray(analysis.plot_clues, 8)
+    .map(clue => cleanString(clue, 120))
+    .filter(Boolean);
   const queries = (analysis.search_queries || [])
     .map(query => cleanString(query, 120))
-    .filter(Boolean);
+    .filter(Boolean)
+    .slice(0, intent === "identify" ? 6 : 3);
 
   // STEP 2: Try the existing Supabase semantic catalogue.
   let semanticCandidates = [];
@@ -1963,7 +2005,7 @@ Return the complete JSON structure required by the supplied schema.`
   // STEP 3: Evaluate Supabase candidates first.
   let ranked = [];
 
-  if (semanticCandidates.length) {
+  if (semanticCandidates.length && intent !== "identify") {
     ranked = await evaluateMovieCandidates(
       situation,
       analysis,
@@ -1979,7 +2021,8 @@ Return the complete JSON structure required by the supplied schema.`
   );
 
   // STEP 4: If no strong match exists, discover movies live from TMDB.
-  if (!ranked.length) {
+  let movieCandidatesEvaluated = semanticCandidates.length;
+  if (!ranked.length || intent === "identify") {
     console.log(
       "Movie recommendation: starting live TMDB discovery"
     );
@@ -1987,8 +2030,8 @@ Return the complete JSON structure required by the supplied schema.`
     const discovered = await discoverMovieCandidates(
       queries,
       env,
-      language,
-      country
+      intent,
+      plotClues
     );
 
     console.log(
@@ -2041,13 +2084,19 @@ Return the complete JSON structure required by the supplied schema.`
       "Movie recommendation: verified TMDB details",
       liveCandidates.length
     );
+    const evaluationCandidates = intent === "identify"
+      ? Array.from(new Map([...liveCandidates, ...semanticCandidates].map(movie => [String(movie.id), movie])).values()).slice(0, MAX_CANDIDATES)
+      : liveCandidates;
+    movieCandidatesEvaluated = intent === "identify"
+      ? evaluationCandidates.length
+      : movieCandidatesEvaluated + liveCandidates.length;
 
-    if (liveCandidates.length) {
+    if (evaluationCandidates.length) {
       ranked = await evaluateMovieCandidates(
         situation,
         analysis,
         desiredOutcome,
-        liveCandidates,
+        evaluationCandidates,
         env
       );
     }
@@ -2058,8 +2107,7 @@ Return the complete JSON structure required by the supplied schema.`
     return {
       success: true,
       analysis,
-      candidatesEvaluated:
-        semanticCandidates.length,
+      candidatesEvaluated: movieCandidatesEvaluated,
       recommendation: null,
       message: "We searched the stored movie catalogue and attempted live TMDB discovery, but couldn't find a sufficiently relevant movie. Please try describing your situation differently."
     };
@@ -2076,14 +2124,17 @@ Return the complete JSON structure required by the supplied schema.`
     : null;
 
   // Cache the selected movie and its synopsis embedding.
-  await saveMovieToSupabase(movie, env);
-  await saveMovieEmbedding(movie, env);
+  try {
+    await saveMovieToSupabase(movie, env);
+    await saveMovieEmbedding(movie, env);
+  } catch (error) {
+    console.error("Movie cache/embedding write failed; returning verified recommendation:", errorMessage(error));
+  }
 
   return {
     success: true,
     analysis,
-    candidatesEvaluated:
-      semanticCandidates.length,
+    candidatesEvaluated: movieCandidatesEvaluated,
     recommendation: {
       id: movie.id,
       title: movie.title,
@@ -2129,6 +2180,13 @@ async function recommendBook(body, env, origin) {
   const language = cleanString(body.language || "any", 12).toLowerCase();
   const country = cleanString(body.country || "", 60);
 
+  if (!SUPPORTED_LANGUAGES.has(language)) {
+    return jsonResponse({ success: false, error: "Please choose a supported language or Any language." }, 400, origin);
+  }
+  if (country && !SUPPORTED_COUNTRIES.has(country.toUpperCase())) {
+    return jsonResponse({ success: false, error: "Please choose a supported country or Anywhere." }, 400, origin);
+  }
+
   if (!situation || situation.length < 10) {
     return jsonResponse({
       success: false,
@@ -2155,7 +2213,7 @@ async function recommendBook(body, env, origin) {
 
   const queries = Array.isArray(analysis.search_queries)
     ? analysis.search_queries
-        .map(query => cleanString(`${query} ${country ? country : ""}`, 120))
+        .map(query => cleanString(`${query} ${country ? COUNTRY_LABELS[country.toUpperCase()] || "" : ""}`, 120))
         .filter(Boolean)
         .slice(0, 3)
     : [];
@@ -2370,11 +2428,18 @@ semanticMovieSearchConfigured: Boolean(
 
         const body = await request.json();
 
+        if (!isObjectRecord(body)) {
+          return jsonResponse({ success: false, error: "Request body must be a JSON object." }, 400, origin);
+        }
+
         const result = await syncMovieCataloguePage(body, env);
 
         return jsonResponse(result, 200, origin);
 
       } catch (error) {
+        if (error?.name === "SyntaxError") {
+          return jsonResponse({ success: false, error: "Invalid request format. Please send valid JSON." }, 400, origin);
+        }
         console.error(
           "Movie catalogue sync error:",
           errorMessage(error)
@@ -2436,6 +2501,10 @@ semanticMovieSearchConfigured: Boolean(
       try {
         const body = await request.json();
 
+        if (!isObjectRecord(body)) {
+          return jsonResponse({ success: false, error: "Request body must be a JSON object." }, 400, origin);
+        }
+
         const situation = cleanString(
           body.situation,
           MAX_SITUATION_LENGTH
@@ -2464,6 +2533,9 @@ semanticMovieSearchConfigured: Boolean(
         }, 200, origin);
 
       } catch (error) {
+        if (error?.name === "SyntaxError") {
+          return jsonResponse({ success: false, error: "Invalid request format. Please send valid JSON." }, 400, origin);
+        }
         console.error(
           "Analyze error:",
           errorMessage(error)
@@ -2483,12 +2555,27 @@ semanticMovieSearchConfigured: Boolean(
       try {
         const body = await request.json();
 
+        if (!isObjectRecord(body)) {
+          return jsonResponse({ success: false, error: "Request body must be a JSON object." }, 400, origin);
+        }
+
         const format = cleanString(body.format, 20).toLowerCase();
         if (format !== "books" && format !== "movies") {
           return jsonResponse({
             success: false,
             error: "Please choose exactly one format: books or movies."
           }, 400, origin);
+        }
+        const requestLanguage = cleanString(body.language || "any", 12).toLowerCase();
+        const requestCountry = cleanString(body.country || "", 10).toUpperCase();
+        if (!SUPPORTED_LANGUAGES.has(requestLanguage)) {
+          return jsonResponse({ success: false, error: "Please choose a supported language or Any language." }, 400, origin);
+        }
+        if (requestCountry && !SUPPORTED_COUNTRIES.has(requestCountry)) {
+          return jsonResponse({ success: false, error: "Please choose a supported country or Anywhere." }, 400, origin);
+        }
+        if (typeof body.situation !== "string" || body.situation.trim().length < 10 || body.situation.length > MAX_SITUATION_LENGTH) {
+          return jsonResponse({ success: false, error: "Please provide a description between 10 and 5,000 characters." }, 400, origin);
         }
         if (format === "movies") {
           const movieResult = await recommendMovies(body, env);
@@ -2499,7 +2586,7 @@ semanticMovieSearchConfigured: Boolean(
       
 } catch (error) {
   const message = errorMessage(error);
-  if (error instanceof SyntaxError) {
+  if (error?.name === "SyntaxError") {
   return jsonResponse({
     success: false,
     error: "Invalid request format. Please try again."
