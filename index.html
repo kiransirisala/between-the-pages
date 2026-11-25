@@ -5,12 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="theme-color" content="#f4f0e8">
   <meta name="description" content="Tell us what's happening in your life. Find one book for your moment.">
-  <title>Between the Pages — One book for your moment</title>
-
+  <title>Between the Pages — Find your one book or movie</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,500;0,600;0,700;1,500;1,600&display=swap" rel="stylesheet">
-
   <link rel="stylesheet" href="style.css">
   <script src="script.js" defer></script>
 </head>
@@ -29,14 +27,9 @@
 
     <main>
       <section class="hero">
-        <div class="eyebrow"><span class="eyebrow-line"></span> A BOOK FOR WHERE YOU ARE <span class="eyebrow-line"></span></div>
-
+        <div class="eyebrow"><span class="eyebrow-line"></span> A STORY FOR WHERE YOU ARE <span class="eyebrow-line"></span></div>
         <h1>Every chapter of life<br>deserves the <em>right perspective.</em></h1>
-
-        <p class="hero-copy">
-          Life doesn't come with a reading list.<br class="desktop-break">
-          Tell us what's happening. We'll find one book for your moment.
-        </p>
+        <p class="hero-copy">Life doesn't come with a reading list or a watchlist.<br class="desktop-break"> Tell us what's happening. Choose books or movies, and we'll find a story for your moment.</p>
 
         <section class="prompt-card" aria-labelledby="prompt-title">
           <div class="card-topline">
@@ -48,36 +41,28 @@
           </div>
 
           <label class="sr-only" for="situation">Describe what's happening in your life</label>
-
           <div class="textarea-wrap">
-            <textarea
-              id="situation"
-              maxlength="5000"
-              placeholder="I've been thinking about changing careers, but I'm worried about taking a risk. I want to move forward without putting my family's security at stake..."
-              required
-            ></textarea>
-
+            <textarea id="situation" maxlength="5000" placeholder="I've been thinking about changing careers, but I'm worried about taking a risk. I want to move forward without putting my family's security at stake..." required></textarea>
             <button type="button" id="micBtn" class="mic-button" aria-label="Start voice input" title="Speak your thoughts">
               <span id="micIcon" aria-hidden="true">🎙</span>
             </button>
           </div>
 
+          <div class="preference-grid" aria-label="Recommendation preferences">
+            <label class="preference-field">What would you like?<select id="formatSelect"><option value="books">Books</option><option value="movies">Movies</option></select></label>
+            <label class="preference-field">Preferred language<select id="languageSelect"><option value="any">Any language</option><option value="en">English</option><option value="te">Telugu</option><option value="hi">Hindi</option><option value="ta">Tamil</option><option value="kn">Kannada</option><option value="ml">Malayalam</option><option value="bn">Bengali</option><option value="mr">Marathi</option><option value="fr">French</option><option value="es">Spanish</option><option value="de">German</option><option value="ja">Japanese</option><option value="ko">Korean</option><option value="it">Italian</option><option value="pt">Portuguese</option><option value="zh">Chinese</option></select></label>
+            <label class="preference-field">Content origin<select id="countrySelect"><option value="">Anywhere in the world</option><option value="IN">India</option><option value="US">United States</option><option value="GB">United Kingdom</option><option value="FR">France</option><option value="DE">Germany</option><option value="JP">Japan</option><option value="KR">South Korea</option><option value="ES">Spain</option><option value="IT">Italy</option><option value="CA">Canada</option><option value="AU">Australia</option></select></label>
+          </div>
+
           <div class="input-meta">
-            <p id="micStatus" class="mic-status" aria-live="polite">
-              Take your time. A few sentences are enough.
-            </p>
+            <p id="micStatus" class="mic-status" aria-live="polite">Take your time. A few sentences are enough.</p>
             <span id="charCount" class="char-count">0 / 5000</span>
           </div>
 
           <div class="form-footer">
-            <span class="privacy-note">
-              <span class="lock-icon" aria-hidden="true">⌑</span>
-              Your story is used to find a thoughtful match.
-            </span>
-
+            <span class="privacy-note"><span class="lock-icon" aria-hidden="true">⌑</span> Your story is used to find a thoughtful match.</span>
             <button type="button" id="recommendBtn" class="primary-button">
-              <span>Find my one book</span>
-              <span class="button-arrow" aria-hidden="true">↗</span>
+              <span>Find my recommendation</span><span class="button-arrow" aria-hidden="true">↗</span>
             </button>
           </div>
         </section>
@@ -93,7 +78,7 @@
     <footer class="footer">
       <a class="footer-brand" href="#">between the pages<span>.</span></a>
       <p>For every chapter of your life.</p>
-      <span class="footer-small">One situation. One meaningful recommendation.</span>
+      <span class="footer-small">One situation. A meaningful story.</span><p class="tmdb-attribution">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
     </footer>
   </div>
 </body>

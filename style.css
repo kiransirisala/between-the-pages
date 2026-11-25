@@ -1,12 +1,7 @@
-
-/* ================================================
-   BETWEEN THE PAGES — MAIN STYLESHEET
-   ================================================ */
-
 :root {
   --paper: #f4f0e8;
   --paper-deep: #eae3d7;
-  --card: rgba(255, 253, 249, .94);
+  --card: rgba(255, 253, 249, .88);
   --ink: #252b28;
   --muted: #72766e;
   --soft: #a2a094;
@@ -18,902 +13,133 @@
   --shadow: 0 24px 70px rgba(40, 53, 45, .10);
 }
 
-/* ================================================
-   GLOBAL
-   ================================================ */
-
-* {
-  box-sizing: border-box;
-}
-
-html {
-  scroll-behavior: smooth;
-}
-
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body {
   margin: 0;
   min-height: 100vh;
   color: var(--ink);
-
   background:
-    radial-gradient(
-      ellipse at 12% 8%,
-      rgba(194, 153, 112, .15),
-      transparent 32rem
-    ),
-    radial-gradient(
-      ellipse at 88% 34%,
-      rgba(107, 145, 124, .13),
-      transparent 34rem
-    ),
+    radial-gradient(ellipse at 12% 8%, rgba(194, 153, 112, .15), transparent 32rem),
+    radial-gradient(ellipse at 88% 34%, rgba(107, 145, 124, .13), transparent 34rem),
     var(--paper);
-
   font-family: "DM Sans", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-
-button,
-textarea {
-  font: inherit;
-}
-
-button {
-  -webkit-tap-highlight-color: transparent;
-}
-
-.page-glow {
-  position: fixed;
-  pointer-events: none;
-  z-index: -1;
-  border-radius: 50%;
-  filter: blur(2px);
-}
-
-.page-glow-one {
-  width: 22rem;
-  height: 22rem;
-  top: 15rem;
-  left: -13rem;
-  background: rgba(190, 128, 93, .08);
-}
-
-.page-glow-two {
-  width: 28rem;
-  height: 28rem;
-  top: 2rem;
-  right: -17rem;
-  background: rgba(37, 76, 67, .08);
-}
-
-.site-shell {
-  width: min(1120px, calc(100% - 56px));
-  margin: 0 auto;
-}
-
-/* ================================================
-   NAVIGATION
-   ================================================ */
-
-.navbar {
-  min-height: 88px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-bottom: 1px solid rgba(75, 79, 67, .13);
-}
-
-.brand {
-  display: inline-flex;
-  align-items: center;
-  gap: 11px;
-  color: var(--ink);
-  text-decoration: none;
-}
-
-.brand-mark {
-  width: 38px;
-  height: 38px;
-  display: grid;
-  place-items: center;
-  border: 1px solid rgba(37, 76, 67, .3);
-  border-radius: 50%;
-  color: var(--green);
-  font: 600 12px "DM Sans", sans-serif;
-  letter-spacing: -1px;
-}
-
-.brand-mark span {
-  color: var(--copper);
-}
-
-.brand-name {
-  font: 600 17px "Playfair Display", Georgia, serif;
-  letter-spacing: -.3px;
-}
-
-.brand-name i {
-  color: var(--copper);
-  font-weight: 500;
-}
-
-.nav-note {
-  color: var(--muted);
-  font-size: 12px;
-  letter-spacing: .04em;
-}
-
-/* ================================================
-   HERO
-   ================================================ */
-
-.hero {
-  max-width: 790px;
-  margin: 76px auto 0;
-  text-align: center;
-}
-
-.eyebrow,
-.step-label {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 11px;
-  color: #8c684e;
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .2em;
-}
-
-.eyebrow-line {
-  width: 26px;
-  height: 1px;
-  background: #c49a7c;
-}
-
-h1 {
-  margin: 23px 0 17px;
-  font: 500 clamp(39px, 6.1vw, 67px)/1.12
-    "Playfair Display", Georgia, serif;
-  letter-spacing: -1.8px;
-}
-
-h1 em {
-  color: var(--green);
-  font-weight: 500;
-}
-
-.hero-copy {
-  margin: 0 auto;
-  color: var(--muted);
-  font-size: 15px;
-  line-height: 1.85;
-}
-
-/* ================================================
-   INPUT CARD
-   ================================================ */
-
-.prompt-card {
-  margin: 39px auto 0;
-  padding: 30px;
-  max-width: 720px;
-  text-align: left;
-  background: var(--card);
-  border: 1px solid rgba(255, 255, 255, .85);
-  border-radius: 22px;
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(14px);
-}
-
-.card-topline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 19px;
-}
-
-.step-label {
-  justify-content: flex-start;
-  font-size: 9px;
-  letter-spacing: .17em;
-  color: #9a795e;
-}
-
-.card-topline h2 {
-  margin: 7px 0 0;
-  font: 600 25px "Playfair Display", Georgia, serif;
-  letter-spacing: -.4px;
-}
-
-.sparkle {
-  display: grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border-radius: 50%;
-  background: #f2e9de;
-  color: var(--copper);
-  font-size: 20px;
-}
-
-/* ================================================
-   TEXTAREA
-   ================================================ */
-
-.textarea-wrap {
-  position: relative;
-}
-
-textarea {
-  display: block;
-  width: 100%;
-  min-height: 154px;
-  resize: vertical;
-  padding: 19px 64px 19px 19px;
-  border: 1px solid #dedbd1;
-  border-radius: 13px;
-  outline: none;
-  background: #fcfbf7;
-  color: var(--ink);
-  font-size: 14px;
-  line-height: 1.8;
-  transition: border-color .2s, box-shadow .2s, background .2s;
-}
-
-textarea::placeholder {
-  color: #a5a49b;
-}
-
-textarea:focus {
-  border-color: #789589;
-  background: white;
-  box-shadow: 0 0 0 4px rgba(37, 76, 67, .08);
-}
-
-/* ================================================
-   MICROPHONE
-   ================================================ */
-
-.mic-button {
-  position: absolute;
-  right: 13px;
-  bottom: 13px;
-  width: 42px;
-  height: 42px;
-  display: grid;
-  place-items: center;
-  border: 1px solid #e3ded4;
-  border-radius: 50%;
-  background: #f0eee7;
-  color: var(--green);
-  cursor: pointer;
-  font-size: 18px;
-  transition: .2s;
-}
-
-.mic-button:hover {
-  background: var(--green-soft);
-  transform: translateY(-1px);
-}
-
-.mic-button.recording {
-  color: white;
-  background: #a64d46;
-  border-color: #a64d46;
-  animation: pulse 1.1s infinite;
-}
-
-@keyframes pulse {
-  50% {
-    box-shadow: 0 0 0 7px rgba(166, 77, 70, .12);
-  }
-}
-
-/* ================================================
-   INPUT META
-   ================================================ */
-
-.input-meta {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  min-height: 34px;
-}
-
-.mic-status,
-.char-count {
-  margin: 8px 0 0;
-  color: var(--soft);
-  font-size: 11px;
-  line-height: 1.5;
-}
-
-.char-count {
-  white-space: nowrap;
-  font-variant-numeric: tabular-nums;
-}
-
-/* ================================================
-   FORM FOOTER
-   ================================================ */
-
-.form-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  margin-top: 22px;
-  padding-top: 20px;
-  border-top: 1px solid #eee9e0;
-}
-
-.privacy-note {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  color: #8d9188;
-  font-size: 10px;
-  line-height: 1.5;
-}
-
-.lock-icon {
-  color: var(--green);
-  font-size: 17px;
-}
-
-/* ================================================
-   PRIMARY BUTTON
-   ================================================ */
-
-.primary-button {
-  min-height: 52px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 20px;
-  padding: 0 22px;
-  border: 0;
-  border-radius: 10px;
-  background: var(--green);
-  color: white;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  box-shadow: 0 7px 16px rgba(37, 76, 67, .16);
-  transition: transform .2s, background .2s, box-shadow .2s;
-}
-
-.primary-button:hover {
-  background: var(--green-deep);
-  transform: translateY(-2px);
-  box-shadow: 0 10px 20px rgba(37, 76, 67, .2);
-}
-
-.primary-button:disabled {
-  opacity: .65;
-  cursor: wait;
-  transform: none;
-}
-
-.button-arrow {
-  font-size: 18px;
-  line-height: 1;
-}
-
-.trust-note {
-  margin: 20px 0 0;
-  color: #8b8d83;
-  font-size: 11px;
-  letter-spacing: .02em;
-}
-
-.trust-note span {
-  color: var(--copper);
-  margin-right: 5px;
-}
-
-/* ================================================
-   RECOMMENDATION SECTION
-   ================================================ */
-
-.result-section {
-  max-width: 900px;
-  margin: 35px auto 0;
-  scroll-margin-top: 24px;
-}
-
-/* ================================================
-   BOOK CARD
-   ================================================ */
-
-.result-card {
-  display: grid;
-  grid-template-columns: 150px minmax(0, 1fr);
-  gap: 30px;
-  padding: 30px;
-  border: 1px solid var(--line);
-  border-radius: 20px;
-  background: rgba(255, 253, 249, .96);
-  box-shadow: 0 16px 45px rgba(40, 53, 45, .08);
-  animation: rise .35s ease both;
-}
-
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translateY(10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-/* ================================================
-   BOOK COVER
-   ================================================ */
-
-.book-visual {
-  min-height: 210px;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-}
-
-.book-cover {
-  display: block;
-  width: 140px;
-  max-height: 210px;
-  object-fit: contain;
-  border-radius: 5px;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, .16);
-}
-
-.cover-placeholder {
-  width: 145px;
-  min-height: 205px;
-  display: grid;
-  place-items: center;
-  padding: 18px;
-  border-radius: 5px 11px 11px 5px;
-  background: linear-gradient(145deg, #31584e, #1e3e37);
-  color: #f8f0e4;
-  text-align: center;
-  box-shadow: 0 12px 24px rgba(0, 0, 0, .15);
-  font: 600 17px/1.35 "Playfair Display", Georgia, serif;
-}
-
-/* ================================================
-   BOOK DETAILS
-   ================================================ */
-
-.book-details {
-  min-width: 0;
-}
-
-.result-label {
-  color: #9a795e;
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: .18em;
-}
-
-.book-title {
-  margin: 9px 0 4px;
-  font: 600 clamp(23px, 2.6vw, 29px)/1.2
-    "Playfair Display", Georgia, serif;
-  overflow-wrap: anywhere;
-}
-
-.book-author {
-  margin: 0 0 20px;
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.result-subhead {
-  margin: 18px 0 5px;
-  color: var(--green);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .13em;
-  text-transform: uppercase;
-}
-
-.book-details p {
-  margin: 5px 0;
-  color: #626a62;
-  font-size: 13px;
-  line-height: 1.75;
-  overflow-wrap: anywhere;
-}
-
-/* ================================================
-   DESCRIPTION AND READ MORE
-   ================================================ */
-
-.book-description {
-  white-space: pre-line;
-  line-height: 1.75;
-}
-
-.book-description > p {
-  margin: 5px 0;
-}
-
-.book-details .book-description p {
-  overflow-wrap: anywhere;
-}
-
-.description-expand {
-  margin-top: 12px;
-}
-
-.description-expand summary {
-  display: inline-flex;
-  align-items: center;
-  min-height: 36px;
-  padding: 7px 14px;
-  border: 1px solid #cbd7ce;
-  border-radius: 999px;
-  color: var(--green);
-  background: transparent;
-  font-size: 11px;
-  font-weight: 600;
-  cursor: pointer;
-  list-style: none;
-  transition: background .2s, border-color .2s;
-}
-
-.description-expand summary::-webkit-details-marker {
-  display: none;
-}
-
-.description-expand summary::after {
-  content: "＋";
-  margin-left: 8px;
-  font-size: 13px;
-}
-
-.description-expand[open] summary::after {
-  content: "−";
-}
-
-.description-expand summary:hover {
-  background: var(--green-soft);
-  border-color: #a8bdb0;
-}
-
-.description-expand summary:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 3px;
-}
-
-.description-expand p {
-  margin: 14px 0 5px;
-  line-height: 1.8;
-}
-
-/* ================================================
-   BOOK METADATA
-   ================================================ */
-
-.book-meta {
-  margin-top: 17px;
-  color: #96968b;
-  font-size: 10px;
-  line-height: 1.7;
-}
-
-/* ================================================
-   BOOK LINKS
-   ================================================ */
-
-.book-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 9px;
-  margin-top: 19px;
-}
-
-.book-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-height: 39px;
-  padding: 0 13px;
-  border: 1px solid #cbd7ce;
-  border-radius: 8px;
-  color: var(--green);
-  text-decoration: none;
-  font-size: 11px;
-  font-weight: 600;
-  transition: .2s;
-}
-
-.book-link:hover {
-  background: var(--green-soft);
-  border-color: #a8bdb0;
-}
-
-/* ================================================
-   NOTICE AND LOADING
-   ================================================ */
-
-.notice-card {
-  padding: 23px 25px;
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: var(--card);
-  color: var(--muted);
-  font-size: 13px;
-  line-height: 1.75;
-  box-shadow: 0 12px 35px rgba(40, 53, 45, .06);
-}
-
-.notice-card strong {
-  display: block;
-  margin-bottom: 5px;
-  color: var(--green);
-  font: 600 20px "Playfair Display", Georgia, serif;
-}
-
-.loading-card {
-  display: flex;
-  align-items: center;
-  gap: 15px;
-  padding: 22px 25px;
-  border: 1px solid var(--line);
-  border-radius: 15px;
-  background: var(--card);
-  color: var(--muted);
-  font-size: 13px;
-}
-
-.loader {
-  width: 23px;
-  height: 23px;
-  flex: 0 0 auto;
-  border: 2px solid #d9e1da;
-  border-top-color: var(--green);
-  border-radius: 50%;
-  animation: spin .8s linear infinite;
-}
-
-@keyframes spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* ================================================
-   FOOTER
-   ================================================ */
-
-.footer {
-  margin-top: 90px;
-  padding: 27px 0 32px;
-  border-top: 1px solid rgba(75, 79, 67, .13);
-  text-align: center;
-}
-
-.footer-brand {
-  color: var(--green);
-  text-decoration: none;
-  font: 600 17px "Playfair Display", Georgia, serif;
-}
-
-.footer-brand span {
-  color: var(--copper);
-}
-
-.footer p {
-  margin: 7px 0 4px;
-  color: var(--muted);
-  font: 13px "Playfair Display", Georgia, serif;
-}
-
-.footer-small {
-  color: #a2a094;
-  font-size: 10px;
-}
-
-/* ================================================
-   ACCESSIBILITY
-   ================================================ */
-
-.sr-only {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  padding: 0;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
-  border: 0;
-}
-
-.primary-button:focus-visible,
-.book-link:focus-visible {
-  outline: 2px solid var(--green);
-  outline-offset: 3px;
-}
-
-/* ================================================
-   TABLET AND MOBILE
-   ================================================ */
+button, textarea { font: inherit; }
+button { -webkit-tap-highlight-color: transparent; }
+.page-glow { position: fixed; pointer-events: none; z-index: -1; border-radius: 50%; filter: blur(2px); }
+.page-glow-one { width: 22rem; height: 22rem; top: 15rem; left: -13rem; background: rgba(190, 128, 93, .08); }
+.page-glow-two { width: 28rem; height: 28rem; top: 2rem; right: -17rem; background: rgba(37, 76, 67, .08); }
+.site-shell { width: min(1120px, calc(100% - 56px)); margin: 0 auto; }
+.navbar { min-height: 88px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(75, 79, 67, .13); }
+.brand { display: inline-flex; align-items: center; gap: 11px; color: var(--ink); text-decoration: none; }
+.brand-mark { width: 38px; height: 38px; display: grid; place-items: center; border: 1px solid rgba(37, 76, 67, .3); border-radius: 50%; color: var(--green); font: 600 12px "DM Sans", sans-serif; letter-spacing: -1px; }
+.brand-mark span { color: var(--copper); }
+.brand-name { font: 600 17px "Playfair Display", Georgia, serif; letter-spacing: -.3px; }
+.brand-name i { color: var(--copper); font-weight: 500; }
+.nav-note { color: var(--muted); font-size: 12px; letter-spacing: .04em; }
+.hero { max-width: 790px; margin: 76px auto 0; text-align: center; }
+.eyebrow, .step-label { display: flex; align-items: center; justify-content: center; gap: 11px; color: #8c684e; font-size: 10px; font-weight: 700; letter-spacing: .2em; }
+.eyebrow-line { width: 26px; height: 1px; background: #c49a7c; }
+h1 { margin: 23px 0 17px; font: 500 clamp(39px, 6.1vw, 67px)/1.12 "Playfair Display", Georgia, serif; letter-spacing: -1.8px; }
+h1 em { color: var(--green); font-weight: 500; }
+.hero-copy { margin: 0 auto; color: var(--muted); font-size: 15px; line-height: 1.85; }
+.prompt-card { margin: 39px auto 0; padding: 30px; max-width: 720px; text-align: left; background: var(--card); border: 1px solid rgba(255,255,255,.85); border-radius: 22px; box-shadow: var(--shadow); backdrop-filter: blur(14px); }
+.card-topline { display: flex; align-items: center; justify-content: space-between; margin-bottom: 19px; }
+.step-label { justify-content: flex-start; font-size: 9px; letter-spacing: .17em; color: #9a795e; }
+.card-topline h2 { margin: 7px 0 0; font: 600 25px "Playfair Display", Georgia, serif; letter-spacing: -.4px; }
+.sparkle { display: grid; place-items: center; width: 40px; height: 40px; border-radius: 50%; background: #f2e9de; color: var(--copper); font-size: 20px; }
+.textarea-wrap { position: relative; }
+textarea { display: block; width: 100%; min-height: 154px; resize: vertical; padding: 19px 64px 19px 19px; border: 1px solid #dedbd1; border-radius: 13px; outline: none; background: #fcfbf7; color: var(--ink); font-size: 14px; line-height: 1.8; transition: border-color .2s, box-shadow .2s, background .2s; }
+textarea::placeholder { color: #a5a49b; }
+textarea:focus { border-color: #789589; background: white; box-shadow: 0 0 0 4px rgba(37,76,67,.08); }
+.mic-button { position: absolute; right: 13px; bottom: 13px; width: 42px; height: 42px; display: grid; place-items: center; border: 1px solid #e3ded4; border-radius: 50%; background: #f0eee7; color: var(--green); cursor: pointer; font-size: 18px; transition: .2s; }
+.mic-button:hover { background: var(--green-soft); transform: translateY(-1px); }
+.mic-button.recording { color: white; background: #a64d46; border-color: #a64d46; animation: pulse 1.1s infinite; }
+@keyframes pulse { 50% { box-shadow: 0 0 0 7px rgba(166,77,70,.12); } }
+.input-meta { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 34px; }
+.mic-status, .char-count { margin: 8px 0 0; color: var(--soft); font-size: 11px; line-height: 1.5; }
+.char-count { white-space: nowrap; font-variant-numeric: tabular-nums; }
+.form-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-top: 22px; padding-top: 20px; border-top: 1px solid #eee9e0; }
+.privacy-note { display: flex; align-items: center; gap: 7px; color: #8d9188; font-size: 10px; line-height: 1.5; }
+.lock-icon { color: var(--green); font-size: 17px; }
+.primary-button { min-height: 52px; display: inline-flex; align-items: center; justify-content: center; gap: 20px; padding: 0 22px; border: 0; border-radius: 10px; background: var(--green); color: white; font-size: 13px; font-weight: 600; cursor: pointer; box-shadow: 0 7px 16px rgba(37,76,67,.16); transition: transform .2s, background .2s, box-shadow .2s; }
+.primary-button:hover { background: var(--green-deep); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(37,76,67,.2); }
+.primary-button:disabled { opacity: .65; cursor: wait; transform: none; }
+.button-arrow { font-size: 18px; line-height: 1; }
+.trust-note { margin: 20px 0 0; color: #8b8d83; font-size: 11px; letter-spacing: .02em; }
+.trust-note span { color: var(--copper); margin-right: 5px; }
+.result-section { max-width: 790px; margin: 35px auto 0; scroll-margin-top: 24px; }
+.result-card { display: grid; grid-template-columns: 170px minmax(0,1fr); gap: 25px; padding: 27px; border: 1px solid var(--line); border-radius: 20px; background: rgba(255,253,249,.94); box-shadow: 0 16px 45px rgba(40,53,45,.08); animation: rise .35s ease both; }
+@keyframes rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+.book-visual { min-height: 220px; display: flex; align-items: flex-start; justify-content: center; }
+.book-cover { display: block; width: 150px; max-height: 225px; object-fit: contain; border-radius: 5px; box-shadow: 0 12px 24px rgba(0,0,0,.16); }
+.cover-placeholder { width: 145px; min-height: 205px; display: grid; place-items: center; padding: 18px; border-radius: 5px 11px 11px 5px; background: linear-gradient(145deg, #31584e, #1e3e37); color: #f8f0e4; text-align: center; box-shadow: 0 12px 24px rgba(0,0,0,.15); font: 600 17px/1.35 "Playfair Display", Georgia, serif; }
+.book-details { min-width: 0; }
+.result-label { color: #9a795e; font-size: 9px; font-weight: 700; letter-spacing: .18em; }
+.book-title { margin: 9px 0 4px; font: 600 27px/1.2 "Playfair Display", Georgia, serif; }
+.book-author { margin: 0 0 20px; color: var(--muted); font-size: 13px; }
+.result-subhead { margin: 18px 0 5px; color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: .13em; text-transform: uppercase; }
+.book-details p { margin: 5px 0; color: #626a62; font-size: 13px; line-height: 1.75; overflow-wrap: anywhere; }
+.book-meta { margin-top: 17px; color: #96968b; font-size: 10px; line-height: 1.7; }
+.book-actions { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 19px; }
+.book-link { display: inline-flex; align-items: center; justify-content: center; min-height: 39px; padding: 0 13px; border: 1px solid #cbd7ce; border-radius: 8px; color: var(--green); text-decoration: none; font-size: 11px; font-weight: 600; transition: .2s; }
+.book-link:hover { background: var(--green-soft); border-color: #a8bdb0; }
+.notice-card { padding: 23px 25px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); color: var(--muted); font-size: 13px; line-height: 1.75; box-shadow: 0 12px 35px rgba(40,53,45,.06); }
+.notice-card strong { display: block; margin-bottom: 5px; color: var(--green); font: 600 20px "Playfair Display", Georgia, serif; }
+.loading-card { display: flex; align-items: center; gap: 15px; padding: 22px 25px; border: 1px solid var(--line); border-radius: 15px; background: var(--card); color: var(--muted); font-size: 13px; }
+.loader { width: 23px; height: 23px; flex: 0 0 auto; border: 2px solid #d9e1da; border-top-color: var(--green); border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.footer { margin-top: 90px; padding: 27px 0 32px; border-top: 1px solid rgba(75,79,67,.13); text-align: center; }
+.footer-brand { color: var(--green); text-decoration: none; font: 600 17px "Playfair Display", Georgia, serif; }
+.footer-brand span { color: var(--copper); }
+.footer p { margin: 7px 0 4px; color: var(--muted); font: 13px "Playfair Display", Georgia, serif; }
+.footer-small { color: #a2a094; font-size: 10px; }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0; }
 
 @media (max-width: 680px) {
-
-  .site-shell {
-    width: min(100% - 32px, 540px);
-  }
-
-  .navbar {
-    min-height: 72px;
-  }
-
-  .brand-mark {
-    width: 34px;
-    height: 34px;
-  }
-
-  .brand-name {
-    font-size: 15px;
-  }
-
-  .nav-note {
-    display: none;
-  }
-
-  .hero {
-    margin-top: 54px;
-  }
-
-  .eyebrow {
-    font-size: 9px;
-    letter-spacing: .15em;
-    gap: 8px;
-  }
-
-  .eyebrow-line {
-    width: 17px;
-  }
-
-  h1 {
-    margin-top: 20px;
-    font-size: clamp(37px, 10vw, 49px);
-    letter-spacing: -1.2px;
-  }
-
-  .hero-copy {
-    max-width: 340px;
-    font-size: 13px;
-  }
-
-  .desktop-break {
-    display: none;
-  }
-
-  .prompt-card {
-    margin-top: 29px;
-    padding: 21px 17px 17px;
-    border-radius: 17px;
-  }
-
-  .card-topline h2 {
-    font-size: 22px;
-  }
-
-  .sparkle {
-    width: 34px;
-    height: 34px;
-  }
-
-  textarea {
-    min-height: 160px;
-    padding: 15px 53px 15px 14px;
-    font-size: 13px;
-  }
-
-  .mic-button {
-    width: 38px;
-    height: 38px;
-    right: 9px;
-    bottom: 9px;
-  }
-
-  .input-meta {
-    align-items: flex-start;
-  }
-
-  .mic-status,
-  .char-count {
-    font-size: 10px;
-  }
-
-  .form-footer {
-    align-items: stretch;
-    flex-direction: column;
-    gap: 14px;
-    margin-top: 16px;
-    padding-top: 16px;
-  }
-
-  .privacy-note {
-    order: 2;
-    justify-content: center;
-  }
-
-  .primary-button {
-    width: 100%;
-    min-height: 51px;
-  }
-
-  .trust-note {
-    max-width: 300px;
-    margin: 16px auto 0;
-    font-size: 10px;
-    line-height: 1.6;
-  }
-
-  .result-section {
-    margin-top: 25px;
-  }
-
-  .result-card {
-    grid-template-columns: 1fr;
-    gap: 17px;
-    padding: 19px;
-  }
-
-  .book-visual {
-    min-height: auto;
-    justify-content: flex-start;
-  }
-
-  .book-cover {
-    width: 112px;
-    max-height: 168px;
-  }
-
-  .cover-placeholder {
-    width: 112px;
-    min-height: 158px;
-    font-size: 14px;
-  }
-
-  .book-title {
-    font-size: 24px;
-  }
-
-  .book-actions {
-    flex-direction: column;
-  }
-
-  .book-link {
-    width: 100%;
-  }
-
-  .footer {
-    margin-top: 62px;
-  }
+  .site-shell { width: min(100% - 32px, 540px); }
+  .navbar { min-height: 72px; }
+  .brand-mark { width: 34px; height: 34px; }
+  .brand-name { font-size: 15px; }
+  .nav-note { display: none; }
+  .hero { margin-top: 54px; }
+  .eyebrow { font-size: 9px; letter-spacing: .15em; gap: 8px; }
+  .eyebrow-line { width: 17px; }
+  h1 { margin-top: 20px; font-size: clamp(37px, 10vw, 49px); letter-spacing: -1.2px; }
+  .hero-copy { max-width: 340px; font-size: 13px; }
+  .desktop-break { display: none; }
+  .prompt-card { margin-top: 29px; padding: 21px 17px 17px; border-radius: 17px; }
+  .card-topline h2 { font-size: 22px; }
+  .sparkle { width: 34px; height: 34px; }
+  textarea { min-height: 160px; padding: 15px 53px 15px 14px; font-size: 13px; }
+  .mic-button { width: 38px; height: 38px; right: 9px; bottom: 9px; }
+  .input-meta { align-items: flex-start; }
+  .mic-status, .char-count { font-size: 10px; }
+  .form-footer { align-items: stretch; flex-direction: column; gap: 14px; margin-top: 16px; padding-top: 16px; }
+  .privacy-note { order: 2; justify-content: center; }
+  .primary-button { width: 100%; min-height: 51px; }
+  .trust-note { max-width: 300px; margin: 16px auto 0; font-size: 10px; line-height: 1.6; }
+  .result-section { margin-top: 25px; }
+  .result-card { grid-template-columns: 1fr; gap: 17px; padding: 19px; }
+  .book-visual { min-height: auto; justify-content: flex-start; }
+  .book-cover { width: 112px; max-height: 168px; }
+  .cover-placeholder { width: 112px; min-height: 158px; font-size: 14px; }
+  .book-title { font-size: 24px; }
+  .book-actions { flex-direction: column; }
+  .book-link { width: 100%; }
+  .footer { margin-top: 62px; }
 }
-
-/* ================================================
-   REDUCED MOTION
-   ================================================ */
-
 @media (prefers-reduced-motion: reduce) {
-
-  *,
-  *::before,
-  *::after {
-    scroll-behavior: auto !important;
-    animation-duration: .01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: .01ms !important;
-  }
+  *, *::before, *::after { scroll-behavior: auto !important; animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
 }
+
+/* Books OR Movies preference controls */
+.preference-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; margin:18px 0 4px; }
+.preference-field { display:flex; flex-direction:column; gap:7px; color:var(--muted); font-size:11px; font-weight:600; }
+.preference-field select { width:100%; min-height:43px; padding:0 12px; border:1px solid #dedbd1; border-radius:9px; background:#fcfbf7; color:var(--ink); font:500 12px "DM Sans",Arial,sans-serif; }
+.preference-field select:focus { outline:2px solid rgba(37,76,67,.2); border-color:#789589; }
+.paired-results { display:grid; gap:18px; }
+.paired-heading { margin:0; color:var(--green); font:600 25px "Playfair Display",Georgia,serif; }
+@media(max-width:680px) { .preference-grid { grid-template-columns:1fr; gap:10px; } }

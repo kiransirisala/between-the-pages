@@ -1,8 +1,8 @@
 
 const ALLOWED_ORIGINS = [
   "http://127.0.0.1:5500",
-  "http://localhost:5500"
-  // Add your deployed website origin here before public launch.
+  "http://localhost:5500",
+  "https://between-the-pages.pages.dev"
 ];
 
 const MODEL = "openai/gpt-oss-120b";
@@ -35,6 +35,38 @@ const ANALYSIS_SCHEMA = {
   additionalProperties: false
 };
 
+const MOVIE_EVALUATION_SCHEMA = {
+  type: "object",
+  properties: {
+    evaluations: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          situationScore: { type: "number" },
+          practicalScore: { type: "number" },
+          contextScore: { type: "number" },
+          evidenceScore: { type: "number" },
+          categoryScore: { type: "number" },
+          reason: { type: "string" }
+        },
+        required: [
+          "id",
+          "situationScore",
+          "practicalScore",
+          "contextScore",
+          "evidenceScore",
+          "categoryScore",
+          "reason"
+        ],
+        additionalProperties: false
+      }
+    }
+  },
+  required: ["evaluations"],
+  additionalProperties: false
+};
 const EVALUATION_SCHEMA = {
   type: "object",
   properties: {
@@ -141,7 +173,9 @@ async function callGroq(env, messages, schema, maxTokens = 1200) {
             json_schema: {
               name: schema === ANALYSIS_SCHEMA
                 ? "situation_analysis"
-                : "book_evaluation",
+                : schema === MOVIE_EVALUATION_SCHEMA
+                  ? "movie_evaluation"
+                  : "book_evaluation",
               strict: true,
               schema
             }
@@ -215,10 +249,297 @@ async function callGroq(env, messages, schema, maxTokens = 1200) {
 
 
 // --------------------------------------------------
+// SUPABASE CATALOGUE HELPERS
+// --------------------------------------------------
+
+function supabaseConfigured(env) {
+  return Boolean(env.SUPABASE_URL && env.SUPABASE_SECRET_KEY);
+}
+
+async function supabaseRequest(env, table, method = "GET", query = "", body = null) {
+  if (!supabaseConfigured(env)) return null;
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+  const url = `${base}/rest/v1/${table}${query ? `?${query}` : ""}`;
+  const response = await fetch(url, {
+    method,
+    headers: {
+      "apikey": env.SUPABASE_SECRET_KEY,
+      "Content-Type": "application/json",
+      "Prefer": method === "POST" ? "resolution=merge-duplicates,return=minimal" : "return=minimal"
+    },
+    body: body ? JSON.stringify(body) : undefined
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("Supabase request failed:", response.status, detail.slice(0, 500));
+    throw new Error(`Supabase catalogue returned ${response.status}.`);
+  }
+  if (method === "GET") return response.json();
+  return true;
+}
+
+async function saveBookToSupabase(book, env) {
+  if (!supabaseConfigured(env) || !book?.id) return;
+  const row = {
+    google_books_id: book.id,
+    title: book.title,
+    authors: book.authors || [],
+    description: book.description || null,
+    categories: book.categories || [],
+    cover_url: book.thumbnail || null,
+    info_link: book.infoLink || null,
+    isbn10: book.isbn10 || null,
+    isbn13: book.isbn13 || null,
+    language: book.language || null,
+    published_date: book.publishedDate || null
+  };
+  try {
+    await supabaseRequest(env, "books", "POST", "on_conflict=google_books_id", [row]);
+  } catch (error) {
+    console.error("Could not cache book in Supabase:", errorMessage(error));
+  }
+}
+
+async function saveMovieToSupabase(movie, env) {
+  if (!supabaseConfigured(env) || !movie?.id) {
+    throw new Error("Supabase is not configured or movie ID is missing.");
+  }
+
+  const row = {
+    tmdb_id: Number(movie.id),
+    title: movie.title,
+    overview: movie.overview || null,
+    genres: movie.genres || [],
+    poster_path: movie.poster_path || null,
+    release_date: movie.release_date || null,
+    original_language: movie.original_language || null,
+    production_countries: movie.production_countries || [],
+    spoken_languages: movie.spoken_languages || []
+  };
+
+  await supabaseRequest(
+    env,
+    "movies",
+    "POST",
+    "on_conflict=tmdb_id",
+    [row]
+  );
+
+  return true;
+}
+
+
+// --------------------------------------------------
+// GEMINI EMBEDDINGS + SUPABASE VECTOR SEARCH
+// --------------------------------------------------
+
+const EMBEDDING_MODEL = "gemini-embedding-001";
+const EMBEDDING_DIMENSIONS = 1536;
+
+async function createGeminiEmbedding(text, env, taskType) {
+  if (!env.GEMINI_API_KEY) {
+    throw new Error("Gemini authentication failed: GEMINI_API_KEY is not configured.");
+  }
+
+  const input = cleanString(text, 7000);
+  if (!input) {
+    throw new Error("Cannot create an embedding from empty text.");
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/${EMBEDDING_MODEL}:embedContent`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": env.GEMINI_API_KEY
+      },
+      body: JSON.stringify({
+        model: `models/${EMBEDDING_MODEL}`,
+        content: { parts: [{ text: input }] },
+        taskType,
+        outputDimensionality: EMBEDDING_DIMENSIONS
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("Gemini embedding error:", response.status, detail.slice(0, 500));
+
+    if (response.status === 401 || response.status === 403) {
+      throw new Error("Gemini authentication failed. Check GEMINI_API_KEY.");
+    }
+
+    if (response.status === 429) {
+      throw new Error("Gemini embedding rate limit reached.");
+    }
+
+    throw new Error(`Gemini embedding service returned ${response.status}.`);
+  }
+
+  const data = await response.json();
+  const values = data.embedding?.values;
+
+  if (!Array.isArray(values) || values.length !== EMBEDDING_DIMENSIONS) {
+    throw new Error(
+      `Gemini returned an invalid embedding dimension. Expected ${EMBEDDING_DIMENSIONS}.`
+    );
+  }
+
+  // Normalize embeddings when using reduced dimensions.
+  const norm = Math.sqrt(
+    values.reduce((sum, value) => sum + value * value, 0)
+  );
+
+  if (!Number.isFinite(norm) || norm === 0) {
+    throw new Error("Gemini returned an invalid zero-length embedding.");
+  }
+
+  return values.map(value => value / norm);
+}
+
+
+async function saveMovieEmbedding(movie, env, existingEmbedding = null) {
+  if (!supabaseConfigured(env)) {
+    throw new Error("Supabase is not configured.");
+  }
+
+  if (!movie?.id || !movie?.overview) {
+    throw new Error("Movie ID and synopsis are required.");
+  }
+
+  // Check whether this exact synopsis already has an embedding.
+  const existing = await supabaseRequest(
+    env,
+    "movie_embeddings",
+    "GET",
+    `select=synopsis&tmdb_id=eq.${Number(movie.id)}&limit=1`
+  );
+
+  if (
+    Array.isArray(existing) &&
+    existing.length > 0 &&
+    existing[0].synopsis === movie.overview
+  ) {
+    console.log("Movie embedding already exists. Skipping:", movie.id);
+    return true;
+  }
+
+  // Reuse the embedding generated during semantic ranking.
+  const embedding =
+    Array.isArray(existingEmbedding) &&
+    existingEmbedding.length === EMBEDDING_DIMENSIONS
+      ? existingEmbedding
+      : await createGeminiEmbedding(
+          movie.overview,
+          env,
+          "RETRIEVAL_DOCUMENT"
+        );
+
+  if (
+    !Array.isArray(embedding) ||
+    embedding.length !== EMBEDDING_DIMENSIONS
+  ) {
+    throw new Error("Invalid movie embedding dimensions.");
+  }
+
+  await supabaseRequest(
+    env,
+    "movie_embeddings",
+    "POST",
+    "on_conflict=tmdb_id",
+    [{
+      tmdb_id: Number(movie.id),
+      synopsis: movie.overview,
+      embedding: `[${embedding.join(",")}]`
+    }]
+  );
+
+  console.log("Movie embedding saved:", movie.id);
+
+  return true;
+}
+
+ 
+async function searchMovieEmbeddings(situationText, env, matchCount = 40) {
+  const embedding = await createGeminiEmbedding(
+    situationText,
+    env,
+    "RETRIEVAL_QUERY"
+  );
+
+  const base = env.SUPABASE_URL.replace(/\/$/, "");
+
+  const response = await fetch(
+    `${base}/rest/v1/rpc/match_movies`,
+    {
+      method: "POST",
+      headers: {
+        "apikey": env.SUPABASE_SECRET_KEY,
+        "Content-Type": "application/json",
+        "Accept": "application/json"
+      },
+      body: JSON.stringify({
+        query_embedding: `[${embedding.join(",")}]`,
+        match_count: matchCount
+      })
+    }
+  );
+
+  if (!response.ok) {
+    const detail = await response.text();
+
+    console.error(
+      "Supabase vector search failed:",
+      response.status,
+      detail.slice(0, 500)
+    );
+
+    throw new Error(
+      `Supabase vector search returned ${response.status}.`
+    );
+  }
+
+  const result = await response.json();
+
+  if (!Array.isArray(result)) {
+    throw new Error("Supabase vector search returned an invalid response.");
+  }
+
+  return result;
+}
+
+
+
+async function getMoviesByIds(ids, env) {
+  const uniqueIds = [
+    ...new Set(ids.map(Number).filter(Number.isFinite))
+  ];
+
+  if (!uniqueIds.length) return [];
+
+  const params = new URLSearchParams({
+    select: "tmdb_id,title,overview,genres,poster_path,release_date,original_language,production_countries,spoken_languages",
+    tmdb_id: `in.(${uniqueIds.join(",")})`,
+    limit: String(uniqueIds.length)
+  });
+
+  return (
+    await supabaseRequest(
+      env,
+      "movies",
+      "GET",
+      params.toString()
+    )
+  ) || [];
+}
+
+// --------------------------------------------------
 // GOOGLE BOOKS SEARCH
 // --------------------------------------------------
 
-async function searchGoogleBooks(query, env) {
+async function searchGoogleBooks(query, env, language = "any") {
   if (!env.GOOGLE_BOOKS_API_KEY) {
     throw new Error("Google Books authentication failed: API key is not configured.");
   }
@@ -228,7 +549,10 @@ async function searchGoogleBooks(query, env) {
   );
 
   url.searchParams.set("q", query);
-  url.searchParams.set("langRestrict", "en");
+  const requestedLanguage = cleanString(language || "any", 12);
+  if (requestedLanguage && requestedLanguage !== "any") {
+    url.searchParams.set("langRestrict", requestedLanguage);
+  }
   url.searchParams.set("maxResults", "10");
   url.searchParams.set("printType", "books");
   url.searchParams.set("key", env.GOOGLE_BOOKS_API_KEY);
@@ -280,6 +604,7 @@ async function searchGoogleBooks(query, env) {
       description: cleanString(info.description, 3500),
       categories: safeArray(info.categories),
       publishedDate: info.publishedDate || null,
+      language: info.language || null,
       publisher: info.publisher || null,
       thumbnail: info.imageLinks?.thumbnail || null,
       infoLink: info.infoLink || null,
@@ -401,10 +726,6 @@ if (description.length < MIN_DESCRIPTION_LENGTH) {
   failedChecks.push("Description too short");
 }
 
-if (!isbn13 && !isbn10) {
-  failedChecks.push("Missing ISBN");
-}
-
 if (failedChecks.length) {
   console.log("Book verification failed:", {
     id: book.id,
@@ -458,6 +779,7 @@ if (!infoLink) {
     description,
     categories: safeArray(info.categories),
     publishedDate: info.publishedDate || null,
+    language: info.language || null,
     publisher: info.publisher || null,
     thumbnail: info.imageLinks?.thumbnail || null,
     infoLink,
@@ -530,7 +852,7 @@ async function searchOpenLibrary(query) {
 // STEP 1: UNDERSTAND THE USER'S SITUATION
 // --------------------------------------------------
 
-async function analyseSituation(situation, desiredOutcome, env) {
+async function analyseSituation(situation, desiredOutcome, env, language = "any", country = "") {
   const analysis = await callGroq(env, [
     {
       role: "system",
@@ -540,7 +862,7 @@ Understand the user's actual circumstances, profession, interests, challenge, un
 
 Do not rely on simple keyword matching.
 
-Generate three distinct, concise English book-catalogue search queries.
+Generate three distinct, concise search queries for relevant books. Respect the requested content language and country preference.
 
 Queries should explore different but relevant angles of the same problem.
 
@@ -571,10 +893,7 @@ Do not invent facts about the user.`
     },
     {
       role: "user",
-      content: JSON.stringify({
-        situation,
-        desired_outcome: desiredOutcome
-      })
+      content: JSON.stringify({ situation, desired_outcome: desiredOutcome, preferred_language: language, preferred_country: country || "any" })
     }
   ], ANALYSIS_SCHEMA, 1200);
 
@@ -595,7 +914,28 @@ Do not invent facts about the user.`
 // STEP 2: SEARCH AND COLLECT CANDIDATES
 // --------------------------------------------------
 
-async function collectCandidates(queries, env) {
+async function findCachedBooks(query, env, language = "any") {
+  if (!supabaseConfigured(env)) return [];
+  const terms = cleanString(query, 120).split(/\s+/).filter(x => x.length > 3).slice(0, 3);
+  if (!terms.length) return [];
+  const pattern = `*${terms[0].replace(/[,*()]/g, "")}*`;
+  const params = new URLSearchParams({
+    select: "google_books_id,title,authors,description,categories,cover_url,info_link,isbn10,isbn13,language,published_date",
+    title: `ilike.${pattern}`,
+    limit: "5"
+  });
+  if (language && language !== "any") params.set("language", `eq.${language}`);
+  const rows = await supabaseRequest(env, "books", "GET", params.toString());
+  return (rows || []).map(row => ({
+    id: row.google_books_id, title: row.title, authors: row.authors || [],
+    description: row.description || "", categories: row.categories || [],
+    thumbnail: row.cover_url, infoLink: row.info_link, previewLink: null,
+    isbn10: row.isbn10, isbn13: row.isbn13, language: row.language,
+    publishedDate: row.published_date, source: "Supabase catalogue"
+  })).filter(book => book.id && book.description.length >= MIN_DESCRIPTION_LENGTH);
+}
+
+async function collectCandidates(queries, env, language = "any") {
   const uniqueBooks = new Map();
   const searchErrors = [];
 
@@ -604,7 +944,13 @@ async function collectCandidates(queries, env) {
     if (!query) continue;
 
     try {
-      const books = await searchGoogleBooks(query, env);
+      const cachedBooks = await findCachedBooks(query, env, language);
+      for (const book of cachedBooks) {
+        if (!uniqueBooks.has(book.id)) uniqueBooks.set(book.id, book);
+      }
+      const books = uniqueBooks.size >= MAX_RANKED_CANDIDATES
+        ? []
+        : await searchGoogleBooks(query, env, language);
 
       for (const book of books) {
         if (
@@ -826,10 +1172,9 @@ async function findVerifiedRecommendation(ranked, env) {
     attempted++;
 
     try {
-      const verified = await verifyGoogleBook(
-        candidate.book,
-        env
-      );
+      const verified = candidate.book.source === "Supabase catalogue"
+        ? candidate.book
+        : await verifyGoogleBook(candidate.book, env);
 
       if (!verified) {
         console.log(
@@ -845,6 +1190,8 @@ async function findVerifiedRecommendation(ranked, env) {
         "Score:",
         candidate.totalScore
       );
+
+      await saveBookToSupabase({ ...verified, language: verified.language }, env);
 
       return {
         book: verified,
@@ -895,6 +1242,875 @@ const isServiceError =
 }
 
 // --------------------------------------------------
+
+// --------------------------------------------------
+// TMDB MOVIE DISCOVERY AND RECOMMENDATION
+// --------------------------------------------------
+
+async function tmdbFetch(path, env, params = {}) {
+  if (!env.TMDB_API_KEY) {
+    throw new Error("TMDB_API_KEY is not configured.");
+  }
+
+  const url = new URL(`https://api.themoviedb.org/3${path}`);
+  url.searchParams.set("api_key", env.TMDB_API_KEY);
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && String(value).trim()) {
+      url.searchParams.set(key, String(value));
+    }
+  }
+
+  const response = await fetch(url.toString(), {
+    headers: { Accept: "application/json" }
+  });
+
+  if (!response.ok) {
+    const detail = await response.text();
+    console.error("TMDB API error:", response.status, detail.slice(0, 500));
+
+    if (response.status === 401) {
+      throw new Error("TMDB authentication failed. Check TMDB_API_KEY.");
+    }
+
+    if (response.status === 429) {
+      throw new Error("TMDB rate limit reached.");
+    }
+
+    throw new Error(`TMDB service returned ${response.status}.`);
+  }
+
+  return response.json();
+}
+
+
+// Search TMDB's keyword catalogue rather than treating
+// natural-language situations as movie titles.
+async function searchMovieKeywords(query, env) {
+  const data = await tmdbFetch("/search/keyword", env, {
+    query,
+    page: 1
+  });
+
+  return (data.results || [])
+    .filter(item => item.id && item.name)
+    .slice(0, 3);
+}
+
+
+// Fetch movie details and retain the original catalogue metadata.
+async function enrichAndVerifyMovie(candidate, env, language = "en-US") {
+  const data = await tmdbFetch(
+    `/movie/${encodeURIComponent(candidate.id)}`,
+    env,
+    { language }
+  );
+
+  const title = cleanString(data.title || data.original_title, 300);
+  const overview = cleanString(data.overview, 3500);
+
+  if (
+    !title ||
+    !overview ||
+    overview.length < 50 ||
+    String(data.id) !== candidate.id
+  ) {
+    return null;
+  }
+
+  return {
+    id: String(data.id),
+    title,
+    overview,
+    release_date: data.release_date || null,
+    original_language: data.original_language || null,
+    poster_path: data.poster_path
+      ? `https://image.tmdb.org/t/p/w500${data.poster_path}`
+      : null,
+    genres: (data.genres || []).map(x => x.name).filter(Boolean),
+    production_countries: (data.production_countries || [])
+      .map(x => x.iso_3166_1)
+      .filter(Boolean),
+    spoken_languages: (data.spoken_languages || [])
+      .map(x => x.iso_639_1)
+      .filter(Boolean),
+    source: "TMDB",
+    tmdb_url: `https://www.themoviedb.org/movie/${data.id}`
+  };
+}
+
+
+// Collect movie candidates from:
+// 1. Supabase cache
+// 2. TMDB keyword search + discovery
+// 3. A short-title-search fallback
+async function discoverMovieCandidates(
+  queries,
+  env,
+  language = "any",
+  country = ""
+) {
+  const found = new Map();
+
+  const addMovie = (item, source = "TMDB") => {
+    if (!item?.id || !item.overview || item.overview.length < 50) {
+      return;
+    }
+ 
+const languageCode = language
+  ? language.split("-")[0].toLowerCase()
+  : "any";
+
+if (
+  languageCode !== "any" &&
+  item.original_language !== languageCode
+) {
+  return;
+}
+
+    const id = String(item.id);
+
+    if (!found.has(id)) {
+      found.set(id, {
+        id,
+        title: item.title || item.original_title || "",
+        overview: cleanString(item.overview, 3500),
+        release_date: item.release_date || null,
+        original_language: item.original_language || null,
+        poster_path: item.poster_path
+          ? item.poster_path.startsWith("http")
+            ? item.poster_path
+            : `https://image.tmdb.org/t/p/w500${item.poster_path}`
+          : null,
+        genres: item.genres || [],
+        production_countries: item.production_countries || [],
+        spoken_languages: item.spoken_languages || [],
+        source,
+        tmdb_url: `https://www.themoviedb.org/movie/${id}`
+      });
+    }
+  };
+
+  // 1. Search the existing Supabase movie catalogue.
+  if (supabaseConfigured(env)) {
+    try {
+      const terms = queries
+        .flatMap(q => cleanString(q, 120).split(/\s+/))
+        .map(x => x.replace(/[,*()]/g, ""))
+        .filter(x => x.length > 4)
+        .slice(0, 3);
+
+      if (terms.length) {
+        const params = new URLSearchParams({
+          select: "tmdb_id,title,overview,genres,poster_path,release_date,original_language,production_countries,spoken_languages",
+          or: `(${terms.map(term => `title.ilike.*${term}*`).join(",")})`,
+          limit: "10"
+        });
+
+        if (language && language !== "any") {
+          params.set("original_language", `eq.${language}`);
+        }
+
+        const cached = await supabaseRequest(
+          env,
+          "movies",
+          "GET",
+          params.toString()
+        );
+
+        for (const row of cached || []) {
+          addMovie({
+            id: row.tmdb_id,
+            title: row.title,
+            overview: row.overview || "",
+            genres: row.genres || [],
+            poster_path: row.poster_path,
+            release_date: row.release_date,
+            original_language: row.original_language,
+            production_countries: row.production_countries || [],
+            spoken_languages: row.spoken_languages || []
+          }, "Supabase catalogue");
+        }
+      }
+
+      console.log("Movie discovery: Supabase candidates", found.size);
+    } catch (error) {
+      console.error(
+        "Supabase movie cache lookup failed:",
+        errorMessage(error)
+      );
+    }
+  }
+
+  // 2. Search TMDB keywords and discover movies by keyword IDs.
+  const keywordIds = new Set();
+
+  for (const query of queries.slice(0, 3)) {
+    try {
+      const keywords = await searchMovieKeywords(query, env);
+
+      for (const keyword of keywords) {
+        keywordIds.add(String(keyword.id));
+      }
+    } catch (error) {
+      console.error(
+        "TMDB keyword search failed:",
+        errorMessage(error)
+      );
+    }
+  }
+
+  console.log(
+    "Movie discovery: TMDB keyword IDs found",
+    keywordIds.size
+  );
+
+  if (keywordIds.size) {
+    try {
+      const params = {
+        include_adult: "false",
+        language: "en-US",
+        sort_by: "popularity.desc",
+        page: 1,
+        with_keywords: Array.from(keywordIds).slice(0, 10).join(",")
+      };
+
+      if (language && language !== "any") {
+        params.with_original_language = language;
+      }
+
+      const discovered = await tmdbFetch(
+        "/discover/movie",
+        env,
+        params
+      );
+
+      console.log(
+        "Movie discovery: TMDB discover results",
+        (discovered.results || []).length
+      );
+
+      for (const item of discovered.results || []) {
+        addMovie(item);
+      }
+    } catch (error) {
+      console.error(
+        "TMDB movie discovery failed:",
+        errorMessage(error)
+      );
+    }
+  }
+
+  // 3. Fallback: discover popular dramas even when
+  // TMDB keyword search returns no results.
+  if (found.size < 5) {
+    for (let page = 1; page <= 3; page++) {
+      try {
+        const discovered = await tmdbFetch(
+          "/discover/movie",
+          env,
+          {
+            include_adult: "false",
+            language: "en-US",
+            sort_by: "vote_count.desc",
+            "vote_count.gte": 50,
+            with_genres: "18",
+            page
+          }
+        );
+
+        console.log(
+          "Movie discovery: TMDB drama fallback page",
+          page,
+          (discovered.results || []).length
+        );
+
+        for (const item of discovered.results || []) {
+          addMovie(item);
+        }
+      } catch (error) {
+        console.error(
+          "TMDB drama fallback failed:",
+          errorMessage(error)
+        );
+      }
+
+      if (found.size >= 20) break;
+    }
+  }
+
+  // 4. Fallback: use shorter phrases in title search.
+  // This avoids sending long situation descriptions as movie titles.
+  if (found.size < MAX_RANKED_CANDIDATES) {
+    for (const query of queries.slice(0, 3)) {
+      const shortQuery = cleanString(query, 120)
+        .replace(/\b(movies?|films?|about|that|which|illustrate|stories|characters)\b/gi, "")
+        .trim()
+        .split(/\s+/)
+        .slice(0, 4)
+        .join(" ");
+
+      if (!shortQuery) continue;
+
+      try {
+        const data = await tmdbFetch("/search/movie", env, {
+          query: shortQuery,
+          include_adult: "false",
+          language: "en-US",
+          page: 1
+        });
+
+        console.log(
+          "Movie discovery: TMDB title search results",
+          shortQuery,
+          (data.results || []).length
+        );
+
+        for (const item of data.results || []) {
+          addMovie(item);
+        }
+      } catch (error) {
+        console.error(
+          "TMDB title search failed:",
+          errorMessage(error)
+        );
+      }
+
+      if (found.size >= MAX_CANDIDATES) break;
+    }
+  }
+
+  const candidates = Array.from(found.values()).slice(
+    0,
+    MAX_CANDIDATES
+  );
+
+  console.log(
+    "Movie discovery: final candidate count",
+    candidates.length
+  );
+
+  return candidates;
+}
+
+
+// --------------------------------------------------
+// TMDB MOVIE CATALOGUE SYNC
+// --------------------------------------------------
+
+async function syncMovieCataloguePage(body, env) {
+  const allowedLists = [
+    "popular",
+    "top_rated",
+    "now_playing",
+    "upcoming"
+  ];
+
+  const list = cleanString(body.list || "popular", 30);
+
+  if (!allowedLists.includes(list)) {
+    throw new Error(
+      "Invalid movie list. Use popular, top_rated, now_playing or upcoming."
+    );
+  }
+
+  const page = Math.max(
+    1,
+    Math.min(500, Number(body.page) || 1)
+  );
+
+  const startIndex = Math.max(
+    0,
+    Math.min(19, Number(body.startIndex) || 0)
+  );
+
+  const language = cleanString(
+    body.language || "en-US",
+    12
+  );
+
+  const region = cleanString(
+    body.region || "",
+    5
+  ).toUpperCase();
+
+  // Fetch the selected TMDB catalogue page.
+  const data = await tmdbFetch(
+    `/movie/${list}`,
+    env,
+    {
+      language,
+      region: region || undefined,
+      page
+    }
+  );
+
+  const movies = (data.results || []).slice(
+    startIndex,
+    startIndex + 5
+  );
+
+  if (!movies.length) {
+    return {
+      success: true,
+      message: "No more movies were found in this catalogue page.",
+      list,
+      page,
+      startIndex,
+      processed: 0,
+      saved: 0,
+      failed: 0,
+      nextPage: page + 1,
+      nextStartIndex: 0
+    };
+  }
+
+  let saved = 0;
+  let failed = 0;
+  const errors = [];
+
+  // Process a small number concurrently to reduce timeouts.
+  let currentIndex = 0;
+
+  async function processMovie(movie) {
+    try {
+      const verified = await enrichAndVerifyMovie(
+        { id: String(movie.id) },
+        env,
+        language
+      );
+
+      if (!verified) {
+        throw new Error(
+          "TMDB did not return a sufficiently detailed movie synopsis."
+        );
+      }
+
+      await saveMovieToSupabase(verified, env);
+      await saveMovieEmbedding(verified, env);
+
+      saved++;
+
+    } catch (error) {
+      failed++;
+
+      errors.push({
+        tmdbId: movie.id,
+        title: movie.title || movie.original_title || "",
+        error: errorMessage(error)
+      });
+
+      console.error(
+        "Movie catalogue sync failed:",
+        movie.id,
+        errorMessage(error)
+      );
+    }
+  }
+
+  async function worker() {
+    while (currentIndex < movies.length) {
+      const index = currentIndex++;
+      await processMovie(movies[index]);
+    }
+  }
+
+  await Promise.all([
+    worker(),
+    worker()
+  ]);
+
+  const nextStartIndex = startIndex + movies.length;
+  const pageComplete = nextStartIndex >= (data.results || []).length;
+
+  return {
+    success: failed === 0,
+    list,
+    language,
+    region: region || null,
+    page,
+    processed: movies.length,
+    saved,
+    failed,
+    errors,
+    nextPage: pageComplete ? page + 1 : page,
+    nextStartIndex: pageComplete ? 0 : nextStartIndex,
+    totalPages: data.total_pages || null,
+    totalResults: data.total_results || null
+  };
+}
+
+
+async function evaluateMovieCandidates(
+  situation,
+  analysis,
+  desiredOutcome,
+  candidates,
+  env
+) {
+  if (!candidates.length) {
+    return [];
+  }
+
+  const selection = await callGroq(env, [
+    {
+      role: "system",
+      content: `You are an evidence-based movie matching engine.
+
+Evaluate each movie's actual synopsis against the user's situation and desired emotional outcome.
+
+Score each movie from 0 to 5:
+- situationScore (35%)
+- practicalScore (25%)
+- contextScore (20%)
+- evidenceScore (15%)
+- categoryScore (5%)
+
+Use the actual synopsis as evidence.
+Do not select based on title keywords, popularity or similarity alone.
+Do not invent movie content.
+Only use the exact candidate IDs provided.
+Return no more than two candidates, strongest first.
+
+If no movie is sufficiently relevant, return an empty evaluations array.
+
+Return JSON with:
+id, situationScore, practicalScore, contextScore,
+evidenceScore, categoryScore and reason.`
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        userSituation: {
+          situation,
+          analysis,
+          desiredOutcome
+        },
+        candidates: candidates.map(movie => ({
+          id: movie.id,
+          title: movie.title,
+          overview: movie.overview,
+          genres: movie.genres,
+          release_date: movie.release_date,
+          original_language: movie.original_language
+        }))
+      })
+    }
+  ], MOVIE_EVALUATION_SCHEMA, 1500);
+
+  const rankingCandidates = candidates.map(movie => ({
+    ...movie,
+    authors: [],
+    description: movie.overview,
+    categories: movie.genres,
+    publishedDate: movie.release_date
+  }));
+
+  return rankCandidates(selection, rankingCandidates);
+}
+
+
+async function recommendMovies(body, env) {
+  const situation = cleanString(
+    body.situation,
+    MAX_SITUATION_LENGTH
+  );
+
+  const desiredOutcome = cleanString(
+    body.desiredOutcome,
+    200
+  ) || "surprise me";
+
+  const language = cleanString(
+    body.language || "any",
+    12
+  ).toLowerCase();
+
+  const country = cleanString(
+    body.country || "",
+    60
+  ).toUpperCase();
+
+  if (!situation || situation.length < 10) {
+    return {
+      success: false,
+      error: "Please describe your situation in at least 10 characters."
+    };
+  }
+
+  // STEP 1: Understand the user's situation.
+  const analysis = await callGroq(env, [
+    {
+      role: "system",
+      content: `You are the situation-understanding engine for Between the Pages.
+
+Understand the user's actual circumstances, challenge, underlying need and desired emotional outcome.
+
+Do not rely on simple keyword matching.
+
+Identify the emotional and narrative themes that would make a movie genuinely relevant.
+
+Return three short search themes in search_queries.
+Do not invent facts about the user.
+
+Return the complete JSON structure required by the supplied schema.`
+    },
+    {
+      role: "user",
+      content: JSON.stringify({
+        situation,
+        desired_outcome: desiredOutcome,
+        preferred_language: language,
+        preferred_country: country || "any"
+      })
+    }
+  ], ANALYSIS_SCHEMA, 1000);
+
+  const queries = (analysis.search_queries || [])
+    .map(query => cleanString(query, 120))
+    .filter(Boolean);
+
+  // STEP 2: Try the existing Supabase semantic catalogue.
+  let semanticCandidates = [];
+
+  try {
+    const semanticQuery = [
+      situation,
+      analysis.situation_summary,
+      analysis.user_context,
+      analysis.main_challenge,
+      analysis.underlying_need,
+      analysis.desired_outcome,
+      desiredOutcome,
+      ...queries
+    ].filter(Boolean).join("\n");
+
+    const matches = await searchMovieEmbeddings(
+      semanticQuery,
+      env,
+      150
+    );
+
+    if (matches.length) {
+      const movies = await getMoviesByIds(
+        matches.map(match => match.tmdb_id),
+        env
+      );
+
+      const similarityById = new Map(
+        matches.map(match => [
+          String(match.tmdb_id),
+          Number(match.similarity)
+        ])
+      );
+
+      semanticCandidates = movies.map(movie => ({
+        id: String(movie.tmdb_id),
+        title: movie.title,
+        overview: movie.overview || "",
+        genres: movie.genres || [],
+        poster_path: movie.poster_path || null,
+        release_date: movie.release_date || null,
+        original_language: movie.original_language || null,
+        production_countries: movie.production_countries || [],
+        spoken_languages: movie.spoken_languages || [],
+        similarity: similarityById.get(String(movie.tmdb_id)) || 0,
+        source: "Supabase catalogue"
+      })).filter(movie =>
+        movie.title &&
+        movie.overview &&
+        movie.overview.length >= 50
+      );
+
+      if (language !== "any") {
+        const languageCode = language.split("-")[0];
+
+        semanticCandidates = semanticCandidates.filter(movie =>
+          movie.original_language === languageCode ||
+          movie.spoken_languages.includes(languageCode)
+        );
+      }
+
+      if (country) {
+        semanticCandidates = semanticCandidates.filter(movie =>
+          movie.production_countries.some(
+            code => String(code).toUpperCase() === country
+          )
+        );
+      }
+
+      semanticCandidates.sort(
+        (a, b) => b.similarity - a.similarity
+      );
+
+      semanticCandidates = semanticCandidates.slice(
+        0,
+        MAX_CANDIDATES
+      );
+    }
+  } catch (error) {
+    console.error(
+      "Supabase semantic movie search failed:",
+      errorMessage(error)
+    );
+  }
+
+  console.log(
+    "Movie recommendation: Supabase candidates",
+    semanticCandidates.length
+  );
+
+  // STEP 3: Evaluate Supabase candidates first.
+  let ranked = [];
+
+  if (semanticCandidates.length) {
+    ranked = await evaluateMovieCandidates(
+      situation,
+      analysis,
+      desiredOutcome,
+      semanticCandidates,
+      env
+    );
+  }
+
+  console.log(
+    "Movie recommendation: Supabase strong matches",
+    ranked.length
+  );
+
+  // STEP 4: If no strong match exists, discover movies live from TMDB.
+  if (!ranked.length) {
+    console.log(
+      "Movie recommendation: starting live TMDB discovery"
+    );
+
+    const discovered = await discoverMovieCandidates(
+      queries,
+      env,
+      language,
+      country
+    );
+
+    console.log(
+      "Movie recommendation: TMDB discovered candidates",
+      discovered.length
+    );
+
+    // Fetch full movie details and actual synopses.
+    const detailResults = await Promise.all(
+      discovered.slice(0, 8).map(async candidate => {
+        try {
+          return await enrichAndVerifyMovie(
+            candidate,
+            env,
+            "en-US"
+          );
+        } catch (error) {
+          console.error(
+            "TMDB movie detail lookup failed:",
+            candidate.id,
+            errorMessage(error)
+          );
+          return null;
+        }
+      })
+    );
+
+    let liveCandidates = detailResults.filter(Boolean);
+
+    // Apply language preference using full movie details.
+    if (language !== "any") {
+      const languageCode = language.split("-")[0];
+
+      liveCandidates = liveCandidates.filter(movie =>
+        movie.original_language === languageCode ||
+        movie.spoken_languages.includes(languageCode)
+      );
+    }
+
+    // Apply production-country preference.
+    if (country) {
+      liveCandidates = liveCandidates.filter(movie =>
+        movie.production_countries.some(
+          code => String(code).toUpperCase() === country
+        )
+      );
+    }
+
+    console.log(
+      "Movie recommendation: verified TMDB details",
+      liveCandidates.length
+    );
+
+    if (liveCandidates.length) {
+      ranked = await evaluateMovieCandidates(
+        situation,
+        analysis,
+        desiredOutcome,
+        liveCandidates,
+        env
+      );
+    }
+  }
+
+  // STEP 5: Return no recommendation rather than an unrelated movie.
+  if (!ranked.length) {
+    return {
+      success: true,
+      analysis,
+      candidatesEvaluated:
+        semanticCandidates.length,
+      recommendation: null,
+      message: "We searched the stored movie catalogue and attempted live TMDB discovery, but couldn't find a sufficiently relevant movie. Please try describing your situation differently."
+    };
+  }
+
+  // STEP 6: Return exactly one strongest recommendation.
+  const item = ranked[0];
+  const movie = item.book;
+
+  const posterPath = movie.poster_path
+    ? movie.poster_path.startsWith("http")
+      ? movie.poster_path
+      : `https://image.tmdb.org/t/p/w500${movie.poster_path}`
+    : null;
+
+  // Cache the selected movie and its synopsis embedding.
+  await saveMovieToSupabase(movie, env);
+  await saveMovieEmbedding(movie, env);
+
+  return {
+    success: true,
+    analysis,
+    candidatesEvaluated:
+      semanticCandidates.length,
+    recommendation: {
+      id: movie.id,
+      title: movie.title,
+      overview: movie.overview,
+      genres: movie.genres,
+      poster_path: posterPath,
+      release_date: movie.release_date,
+      original_language: movie.original_language,
+      production_countries: movie.production_countries,
+      spoken_languages: movie.spoken_languages,
+      source: "TMDB",
+      tmdb_url: `https://www.themoviedb.org/movie/${movie.id}`,
+      reason: item.reason,
+      relevanceScore: item.totalScore,
+      scoreBreakdown: {
+        situation: item.situationScore,
+        practicalUsefulness: item.practicalScore,
+        professionalContext: item.contextScore,
+        descriptionEvidence: item.evidenceScore,
+        category: item.categoryScore
+      }
+    }
+  };
+}
+
+
+// --------------------------------------------------
 // STEP 6: SINGLE BOOK RECOMMENDATION
 // --------------------------------------------------
 
@@ -909,10 +2125,9 @@ async function recommendBook(body, env, origin) {
     200
   ) || "surprise me";
 
-  const format = cleanString(
-    body.format,
-    20
-  ).toLowerCase() || "books";
+  const format = cleanString(body.format, 20).toLowerCase();
+  const language = cleanString(body.language || "any", 12).toLowerCase();
+  const country = cleanString(body.country || "", 60);
 
   if (!situation || situation.length < 10) {
     return jsonResponse({
@@ -921,32 +2136,26 @@ async function recommendBook(body, env, origin) {
     }, 400, origin);
   }
 
-  if (!["books", "movies", "both"].includes(format)) {
-    return jsonResponse({
-      success: false,
-      error: "Format must be books, movies or both."
-    }, 400, origin);
-  }
-
   if (format !== "books") {
     return jsonResponse({
       success: false,
-      code: "MOVIE_SOURCE_NOT_CONFIGURED",
-      recommendation: null,
-      message: "Book recommendations are available. Movie recommendations are coming soon."
-    }, 501, origin);
+      error: "This endpoint accepts books only. Choose books or movies."
+    }, 400, origin);
   }
+
 
   // Step 1: Understand the situation.
   const analysis = await analyseSituation(
     situation,
     desiredOutcome,
-    env
+    env,
+    language,
+    country
   );
 
   const queries = Array.isArray(analysis.search_queries)
     ? analysis.search_queries
-        .map(query => cleanString(query, 120))
+        .map(query => cleanString(`${query} ${country ? country : ""}`, 120))
         .filter(Boolean)
         .slice(0, 3)
     : [];
@@ -961,10 +2170,7 @@ async function recommendBook(body, env, origin) {
   }
 
   // Step 2: Search the catalogue.
-  const searchResult = await collectCandidates(
-    queries,
-    env
-  );
+  const searchResult = await collectCandidates(queries, env, language);
 
   const candidates = searchResult.candidates;
 
@@ -1080,6 +2286,7 @@ async function recommendBook(body, env, origin) {
       isbn13: result.book.isbn13,
       isbn10: result.book.isbn10,
       source: result.book.source,
+      language: result.book.language || null,
       reason: result.reason,
       relevanceScore: result.relevanceScore,
       scoreBreakdown: result.scoreBreakdown
@@ -1129,8 +2336,59 @@ export default {
       return jsonResponse({
         status: "online",
         service: "Between the Pages API",
-        version: "0.3"
+        version: "4.1",
+supabaseConfigured: supabaseConfigured(env),
+movieProviderConfigured: Boolean(env.TMDB_API_KEY),
+embeddingsConfigured: Boolean(env.GEMINI_API_KEY),
+semanticMovieSearchConfigured: Boolean(
+  env.GEMINI_API_KEY &&
+  env.SUPABASE_URL &&
+  env.SUPABASE_SECRET_KEY
+)
       }, 200, origin);
+    }
+
+    // Protected movie catalogue sync endpoint.
+    if (
+      url.pathname === "/api/admin/sync-movies" &&
+      request.method === "POST"
+    ) {
+      try {
+        const adminKey = request.headers.get("x-admin-key");
+
+        if (
+          !env.ADMIN_SYNC_KEY ||
+          !adminKey ||
+          adminKey !== env.ADMIN_SYNC_KEY
+        ) {
+          return jsonResponse(
+            { success: false, error: "Unauthorized." },
+            401,
+            origin
+          );
+        }
+
+        const body = await request.json();
+
+        const result = await syncMovieCataloguePage(body, env);
+
+        return jsonResponse(result, 200, origin);
+
+      } catch (error) {
+        console.error(
+          "Movie catalogue sync error:",
+          errorMessage(error)
+        );
+
+        return jsonResponse(
+          {
+            success: false,
+            error: errorMessage(error)
+          },
+          502,
+          origin
+        );
+      }
     }
 
     // Open Library discovery endpoint.
@@ -1225,11 +2483,18 @@ export default {
       try {
         const body = await request.json();
 
-        return await recommendBook(
-          body,
-          env,
-          origin
-        );
+        const format = cleanString(body.format, 20).toLowerCase();
+        if (format !== "books" && format !== "movies") {
+          return jsonResponse({
+            success: false,
+            error: "Please choose exactly one format: books or movies."
+          }, 400, origin);
+        }
+        if (format === "movies") {
+          const movieResult = await recommendMovies(body, env);
+          return jsonResponse(movieResult, 200, origin);
+        }
+        return await recommendBook(body, env, origin);
 
       
 } catch (error) {
